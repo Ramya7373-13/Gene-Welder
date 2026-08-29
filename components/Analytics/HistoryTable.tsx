@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo, memo } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { backendService, Patient, Variant } from '../../services/backendService';
 import {
-  Search, ChevronLeft, ChevronRight, MoreVertical,
-  Trash2, ExternalLink, Filter, ArrowUpDown,
-  CheckSquare, Square, Archive, ArchiveRestore, Download, UserPlus, Database
+  Trash2, ExternalLink, Download, UserPlus, Database,
+  Users, Activity, CheckCircle2, WifiOff, Wifi
 } from 'lucide-react';
+import EmptyState from '../EmptyState';
 
 interface HistoryTableProps {
-  records: any[]; // Existing records for backward compatibility
+  records: any[];
   onDelete: (id: string) => void;
   onBulkDelete: (ids: string[]) => void;
   onBulkArchive: (ids: string[], archive: boolean) => void;
@@ -21,67 +21,42 @@ const HistoryTable: React.FC<HistoryTableProps> = ({
   onBulkDelete,
   onBulkArchive,
   onBulkExport,
-  onView
+  onView,
 }) => {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients,        setPatients]        = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState('');
-  const [variants, setVariants] = useState<Variant[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [variants,        setVariants]        = useState<Variant[]>([]);
+  const [history,         setHistory]         = useState<any[]>([]);
+  const [loading,         setLoading]         = useState(false);
+  const [backendOk,       setBackendOk]       = useState<boolean | null>(null);
 
   useEffect(() => {
     const init = async () => {
-      console.log('🚀 HistoryTable loading...')
       try {
-        // Test 1: Backend connection
-        console.log('🔄 Testing backend...')
-        const patients = await backendService.getPatients()
-        console.log('✅ Patients:', patients)
-        setPatients(patients)
-
-        // Test 2: History
-        const historyData = await backendService.getHistory()
-        console.log('✅ History:', historyData)
-        setHistory(historyData)
-
-      } catch (error) {
-        console.error('❌ Frontend error:', error)
+        const [pts, hist] = await Promise.all([
+          backendService.getPatients(),
+          backendService.getHistory(),
+        ]);
+        setPatients(pts);
+        setHistory(hist);
+        setBackendOk(true);
+      } catch {
+        setBackendOk(false);
       }
-    }
-    init()
+    };
+    init();
   }, []);
 
-  const loadPatients = async () => {
-    try {
-      const data = await backendService.getPatients();
-      setPatients(data);
-    } catch (e) {
-      console.error("Failed to load patients", e);
-    }
-  };
-
   const loadVariants = async (patientId: string) => {
-    if (!patientId) {
-      setVariants([]);
-      return;
-    }
+    setVariants([]);
+    if (!patientId) return;
     setLoading(true);
     try {
-      const data = await backendService.getVariants(patientId);
-      setVariants(data);
-    } catch (e) {
-      console.error("Failed to load variants", e);
+      setVariants(await backendService.getVariants(patientId));
+    } catch {
+      /* handled gracefully by empty state below */
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadHistory = async () => {
-    try {
-      const data = await backendService.getHistory();
-      setHistory(data);
-    } catch (e) {
-      console.error("Failed to load history", e);
     }
   };
 
@@ -89,101 +64,176 @@ const HistoryTable: React.FC<HistoryTableProps> = ({
     const id = `MRN-${Math.floor(100000 + Math.random() * 900000)}`;
     try {
       await backendService.createPatient({ patientId: id });
-      loadPatients();
-    } catch (e) {
-      console.error("Failed to create patient", e);
+      setPatients(await backendService.getPatients());
+    } catch {
+      /* surface via status banner already */
     }
   };
 
+  const isEmpty = (n: number) => n === 0;
+
   return (
     <div className="space-y-6">
+
+      {/* Two-column management panels */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Patient Selection & Creation */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <Database className="text-primary" size={20} /> Clinical Patient Management
+
+        {/* Clinical Patient Management */}
+        <div className="mm-card-glowing mm-glow mm-glow--cyan p-6 rounded-2xl shadow-xl transition-all duration-300">
+          <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
+            <Database className="text-cyan-400" size={18} aria-hidden="true" />
+            Clinical Patient Management
           </h3>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <select
-              aria-label="Select research patient"
-              className="flex-grow bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-primary focus:outline-none transition-all"
-              value={selectedPatient}
-              onChange={(e) => {
-                setSelectedPatient(e.target.value);
-                loadVariants(e.target.value);
-              }}
-            >
-              <option value="">Select Research Patient</option>
-              {patients.map(p => (
-                <option key={p.id} value={p.patientId}>
-                  {p.name || p.patientId} {/* Show name OR ID */}
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <select
+                aria-label="Select research patient"
+                className="ds-select w-full"
+                value={selectedPatient}
+                onChange={(e) => {
+                  setSelectedPatient(e.target.value);
+                  loadVariants(e.target.value);
+                }}
+                disabled={patients.length === 0}
+              >
+                <option value="">
+                  {patients.length === 0 ? 'No patients registered' : 'Select Research Patient'}
                 </option>
-              ))}
-            </select>
+                {patients.map(p => (
+                  <option key={p.id} value={p.patientId}>
+                    {p.name ? `${p.name} (${p.patientId})` : p.patientId}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <button
-              className="flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-primary/20"
               onClick={handleCreatePatient}
+              aria-label="Register new patient with auto-generated MRN"
+              className={[
+                'flex items-center justify-center gap-2 px-5 py-2 rounded-lg',
+                'text-xs font-bold text-slate-900 bg-cyan-400 hover:bg-cyan-300 uppercase tracking-widest shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_20px_rgba(34,211,238,0.6)]',
+                'transition-all duration-150 shrink-0',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70',
+                'active:scale-[0.97]',
+              ].join(' ')}
             >
-              <UserPlus size={18} /> New Patient
+              <UserPlus size={16} aria-hidden="true" /> New Patient
             </button>
           </div>
+
+          {/* Zero-state when no patients */}
+          {patients.length === 0 && backendOk === true && (
+            <div className="mt-4">
+              <EmptyState
+                icon={Users}
+                headline="No patients registered"
+                subtext="Click 'New Patient' to register the first research patient."
+                size="compact"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Quick Stats */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <Database className="text-primary" size={20} /> Repository Overview
+        {/* Repository Overview */}
+        <div className="mm-card-glowing mm-glow mm-glow--cyan p-6 rounded-2xl shadow-xl transition-all duration-300">
+          <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
+            <Database className="text-cyan-400" size={18} aria-hidden="true" />
+            Repository Overview
           </h3>
+
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total Patients</div>
-              <div className="text-2xl font-bold text-white">{patients.length}</div>
+            {/* Total Patients stat */}
+            <div className={`rounded-xl border p-4 transition-all ${isEmpty(patients.length) ? "border-slate-800 bg-slate-950/50" : "border-cyan-500/30 bg-cyan-950/20 shadow-[inset_0_0_10px_rgba(34,211,238,0.05)]"}`}>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Total Patients</div>
+              {isEmpty(patients.length) ? (
+                <>
+                  <div className="text-2xl font-bold text-slate-700">0</div>
+                  <div className="text-[10px] text-slate-700 italic mt-0.5">No patients yet</div>
+                </>
+              ) : (
+                <div className="text-2xl font-bold text-white">{patients.length}</div>
+              )}
             </div>
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total Analyses</div>
-              <div className="text-2xl font-bold text-white">{history.length}</div>
+
+            {/* Total Analyses stat */}
+            <div className={`rounded-xl border p-4 transition-all ${isEmpty(history.length) ? "border-slate-800 bg-slate-950/50" : "border-cyan-500/30 bg-cyan-950/20 shadow-[inset_0_0_10px_rgba(34,211,238,0.05)]"}`}>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Total Analyses</div>
+              {isEmpty(history.length) ? (
+                <>
+                  <div className="text-2xl font-bold text-slate-700">0</div>
+                  <div className="text-[10px] text-slate-700 italic mt-0.5">Run first analysis</div>
+                </>
+              ) : (
+                <div className="text-2xl font-bold text-white">{history.length}</div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Variants Table */}
+      {/* Variants table — shown only when a patient is selected */}
       {selectedPatient && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
-            <h3 className="font-bold text-white">Variants for {selectedPatient}</h3>
-            <span className="text-xs text-slate-500">{variants.length} records found</span>
+        <div className="mm-card-glowing mm-glow mm-glow--purple rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-300 shadow-xl">
+          <div className="px-5 py-3.5 bg-slate-950/60 border-b border-slate-800 flex justify-between items-center">
+            <h3 className="font-semibold text-white text-sm">
+              Variants — <span className="font-mono text-cyan-400">{selectedPatient}</span>
+            </h3>
+            <span className="text-xs text-slate-500">{variants.length} record{variants.length !== 1 ? 's' : ''}</span>
           </div>
+
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left" aria-label={`Variants for patient ${selectedPatient}`}>
               <thead className="bg-slate-950 text-slate-500 text-[10px] font-bold uppercase tracking-widest border-b border-slate-800">
                 <tr>
-                  <th className="px-6 py-4">Gene</th>
-                  <th className="px-6 py-4">HGVS (c)</th>
-                  <th className="px-6 py-4">Zygosity</th>
-                  <th className="px-6 py-4">gnomAD Freq</th>
-                  <th className="px-6 py-4">ACMG</th>
+                  <th className="px-5 py-3">Gene</th>
+                  <th className="px-5 py-3">HGVS (c)</th>
+                  <th className="px-5 py-3">Zygosity</th>
+                  <th className="px-5 py-3">gnomAD Freq</th>
+                  <th className="px-5 py-3">ACMG</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {loading ? (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-500">Loading variants...</td></tr>
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center">
+                      <span className="text-slate-500 text-sm animate-pulse">Loading variants…</span>
+                    </td>
+                  </tr>
                 ) : variants.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-500">No variants registered for this patient.</td></tr>
+                  <tr>
+                    <td colSpan={5}>
+                      <EmptyState
+                        icon={Activity}
+                        headline="No variants registered"
+                        subtext="No variant data has been recorded for this patient yet."
+                        size="compact"
+                      />
+                    </td>
+                  </tr>
                 ) : (
                   variants.map(v => (
                     <tr
                       key={v.id}
-                      className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
-                      onClick={() => onView(v)} // Trigger deep-link on click
+                      className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                      onClick={() => onView(v)}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`View details for ${v.gene} ${v.hgvs_c}`}
+                      onKeyDown={(e) => e.key === 'Enter' && onView(v)}
                     >
-                      <td className="px-6 py-4 font-bold text-white group-hover:text-primary transition-colors">{v.gene}</td>
-                      <td className="px-6 py-4 font-mono text-xs text-primary">{v.hgvs_c}</td>
-                      <td className="px-6 py-4 text-xs text-slate-300 capitalize">{v.zygosity}</td>
-                      <td className="px-6 py-4 text-xs text-slate-400">{v.gnomad_freq || 'N/A'}</td>
-                      <td className="px-6 py-4 text-xs">
-                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${v.acmg_class === 'PVS1' ? 'bg-red-900/40 text-red-300' : 'bg-slate-800 text-slate-400'}`}>
-                          {v.acmg_class || 'Not Classified'}
+                      <td className="px-5 py-3.5 font-bold text-white text-sm group-hover:text-cyan-400 transition-colors">{v.gene}</td>
+                      <td className="px-5 py-3.5 font-mono text-xs text-cyan-400">{v.hgvs_c}</td>
+                      <td className="px-5 py-3.5 text-xs text-slate-300 capitalize">{v.zygosity}</td>
+                      <td className="px-5 py-3.5 text-xs text-slate-400">{v.gnomad_freq || 'N/A'}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          v.acmg_class === 'PVS1'
+                            ? 'bg-red-500/12 text-red-400 border border-red-500/20'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}>
+                          {v.acmg_class || 'Unclassified'}
                         </span>
                       </td>
                     </tr>
@@ -195,12 +245,19 @@ const HistoryTable: React.FC<HistoryTableProps> = ({
         </div>
       )}
 
-      {/* Legacy Audit View (Placeholder for existing analyses if still needed) */}
-      <div className="p-4 bg-indigo-900/20 border border-indigo-800/30 rounded-xl">
-        <p className="text-indigo-300 text-sm">
-          System is connected to clinical backend. Showing <span className="font-bold">{history.length}</span> global analysis records in persistent storage.
-        </p>
-      </div>
+      {/* System status banner — reusable StatusBanner pattern */}
+      {backendOk !== null && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`ds-status-banner ${backendOk ? 'ds-status-banner--connected' : 'ds-status-banner--disconnected'}`}
+        >
+          {backendOk
+            ? <><CheckCircle2 size={14} aria-hidden="true" /> System connected to clinical backend — <span className="font-bold">{history.length}</span> analysis record{history.length !== 1 ? 's' : ''} in persistent storage.</>
+            : <><WifiOff size={14} aria-hidden="true" /> Backend unavailable — running in simulation mode. Patient data will not persist.</>
+          }
+        </div>
+      )}
     </div>
   );
 };

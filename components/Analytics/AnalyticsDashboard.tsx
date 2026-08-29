@@ -272,7 +272,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   };
 
   const StatCard = ({ label, value, sub, icon: Icon, color, trend }: any) => (
-    <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm hover:border-slate-700 transition-all group overflow-hidden relative">
+    <div className="mm-card-glowing mm-glow mm-glow--emerald p-5 rounded-2xl group shadow-sm hover:border-emerald-700/50 transition-all overflow-hidden relative">
       <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-5 ${color} blur-2xl`}></div>
       <div className="flex justify-between items-start mb-4 relative z-10">
         <div className={`p-2 rounded-xl ${color} bg-opacity-10 ring-1 ring-inset ring-white/5`}>
@@ -304,7 +304,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           </div>
           <button 
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg border transition-all ${showFilters ? 'bg-primary/20 border-primary text-primary' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+            className={`flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg border transition-all ${showFilters ? 'bg-primary/20 border-primary text-primary' : 'mm-btn-tactical !bg-slate-900 !border-slate-800 text-slate-400'}`}
           >
             <Filter size={14} /> Filters {filteredRecords.length < records.length && `(${filteredRecords.length})`}
           </button>
@@ -321,9 +321,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
       {/* SECTION 5.1: Advanced Filters Panel */}
       {showFilters && (
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl animate-in slide-in-from-top-4 duration-300">
+        <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl animate-in slide-in-from-top-4 duration-300">
            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-widest"><Sliders size={16} className="text-primary"/> Analysis Filters</h3>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-widest mm-section-accent mm-section-accent--emerald"><Sliders size={16} className="text-primary"/> Analysis Filters</h3>
               <button onClick={() => setFilters({
                 dateRange: 'ALL', customDates: ['', ''], risks: ['LOW', 'MEDIUM', 'HIGH'], confidence: [0, 100], genes: [], pathogenicity: 'ALL'
               })} className="text-[10px] text-primary hover:underline font-bold uppercase tracking-widest flex items-center gap-1">
@@ -348,8 +348,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                  </div>
                  {filters.dateRange === 'CUSTOM' && (
                     <div className="flex gap-2 animate-in fade-in slide-in-from-top-2 pt-2">
-                       <input aria-label="Custom start date" type="date" value={filters.customDates[0]} onChange={e => setFilters(prev => ({ ...prev, customDates: [e.target.value, prev.customDates[1]] }))} className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-white w-full" />
-                       <input aria-label="Custom end date" type="date" value={filters.customDates[1]} onChange={e => setFilters(prev => ({ ...prev, customDates: [prev.customDates[0], e.target.value] }))} className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-white w-full" />
+                       <input aria-label="Custom start date" type="date" value={filters.customDates[0]} onChange={e => setFilters(prev => ({ ...prev, customDates: [e.target.value, prev.customDates[1]] }))} className="mm-input-tactical px-2 py-1 text-[10px] text-white w-full" />
+                       <input aria-label="Custom end date" type="date" value={filters.customDates[1]} onChange={e => setFilters(prev => ({ ...prev, customDates: [prev.customDates[0], e.target.value] }))} className="mm-input-tactical px-2 py-1 text-[10px] text-white w-full" />
                     </div>
                  )}
               </div>
@@ -392,7 +392,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                    id="pathogenicity"
                    value={filters.pathogenicity}
                    onChange={e => setFilters(prev => ({ ...prev, pathogenicity: e.target.value as any }))}
-                   className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-[11px] text-slate-300 outline-none"
+                   className="w-full mm-input-tactical px-2 py-1.5 text-[11px] text-slate-300 outline-none"
                  >
                     <option value="ALL">All Pathogenicities</option>
                     <option value="BENIGN">Benign</option>
@@ -428,7 +428,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       {/* SECTION 5.2: Export Dialog Modal */}
       {showExportModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-           <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+           <div className="mm-card-glowing mm-glow mm-glow--blue w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col">
               <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
                  <div className="flex items-center gap-3">
                     <div className="bg-primary/20 p-2 rounded-lg"><Download className="text-primary" size={20}/></div>
@@ -448,7 +448,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                           <button 
                              key={fmt}
                              onClick={() => setExportConfig(prev => ({ ...prev, format: fmt }))}
-                             className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${exportConfig.format === fmt ? 'bg-primary/10 border-primary text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'}`}
+                             className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${exportConfig.format === fmt ? 'bg-rose-500/10 border-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.3)] mm-glow--rose' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'}`}
                              aria-pressed={exportConfig.format === fmt ? 'true' : 'false'}
                           >
                              {fmt === 'CSV' && <FileSpreadsheet size={20}/> }
@@ -494,14 +494,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                       type="text" 
                       value={exportConfig.filename}
                       onChange={e => setExportConfig(prev => ({ ...prev, filename: e.target.value }))}
-                      className="bg-slate-950 border border-slate-800 rounded-lg py-3 px-4 text-sm text-white w-full outline-none font-mono focus:border-primary transition-colors"
+                      className="mm-input-tactical py-3 px-4 text-sm text-white w-full outline-none font-mono transition-colors"
                     />
                  </div>
               </div>
 
               <div className="p-6 bg-slate-950/50 border-t border-slate-800 flex gap-3">
                  <button onClick={() => setShowExportModal(false)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs rounded-xl border border-slate-700 transition-all">Cancel</button>
-                 <button onClick={() => { onExport(exportConfig); setShowExportModal(false); }} className="w-full py-3 bg-primary hover:bg-primary-hover text-white font-bold text-xs rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2">
+                 <button onClick={() => { onExport(exportConfig); setShowExportModal(false); }} className="mm-btn-tactical !w-full py-3 text-white transition-all flex items-center justify-center gap-2">
                    <CheckCircle2 size={16}/> Confirm Export
                  </button>
               </div>
@@ -510,7 +510,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       )}
 
       {!stats ? (
-        <div className="py-20 text-center bg-slate-900 border border-slate-800 border-dashed rounded-2xl">
+        <div className="mm-card-glowing mm-glow mm-glow--emerald py-20 text-center border-dashed rounded-2xl group">
            <AlertTriangle size={48} className="text-slate-700 mx-auto mb-4" />
            <h3 className="text-lg font-bold text-slate-500">No matching records found</h3>
            <p className="text-slate-600 text-sm mt-2 max-w-xs mx-auto">Adjust your filters or perform more analyses to populate this dashboard.</p>
@@ -533,7 +533,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                       role="radio"
                       aria-checked={exportConfig.format === fmt ? 'true' : 'false'}
                       onClick={() => setExportConfig(prev => ({ ...prev, format: fmt }))}
-                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${exportConfig.format === fmt ? 'bg-primary/10 border-primary text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'}`}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${exportConfig.format === fmt ? 'bg-rose-500/10 border-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.3)] mm-glow--rose' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'}`}
                     >
                       {fmt === 'CSV' && <FileSpreadsheet size={20}/> }
                       {fmt === 'JSON' && <FileJson size={20}/>}
@@ -544,8 +544,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                   ))}
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
+                <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2 mm-section-accent mm-section-accent--emerald">
                     <Activity size={16} className="text-primary" /> Analysis Frequency
                   </h3>
                   <div className="h-80 w-full">
@@ -573,8 +573,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <div className="space-y-8 animate-in slide-in-from-bottom-2 duration-500">
                {/* 6.1 Summary Stats Grid */}
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Activity size={14} className="text-primary" /> Analyses Overview</h4>
+                  <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 mm-section-accent mm-section-accent--emerald"><Activity size={14} className="text-primary" /> Analyses Overview</h4>
                      <div className="space-y-4">
                         <div className="flex justify-between border-b border-slate-800 pb-2">
                            <span className="text-slate-400 text-xs">Total Analyses</span>
@@ -591,8 +591,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                      </div>
                   </div>
 
-                  <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><AlertCircle size={14} className="text-red-400" /> Risk Analysis</h4>
+                  <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 mm-section-accent mm-section-accent--emerald"><AlertCircle size={14} className="text-red-400" /> Risk Analysis</h4>
                      <div className="space-y-4">
                         <div className="flex justify-between border-b border-slate-800 pb-2">
                            <span className="text-slate-400 text-xs">Mean Risk</span>
@@ -609,8 +609,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                      </div>
                   </div>
 
-                  <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Shield size={14} className="text-emerald-400" /> Confidence</h4>
+                  <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 mm-section-accent mm-section-accent--emerald"><Shield size={14} className="text-emerald-400" /> Confidence</h4>
                      <div className="space-y-4">
                         <div className="flex justify-between border-b border-slate-800 pb-2">
                            <span className="text-slate-400 text-xs">Mean</span>
@@ -627,8 +627,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                      </div>
                   </div>
 
-                  <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Target size={14} className="text-violet-400" /> Gene Statistics</h4>
+                  <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 mm-section-accent mm-section-accent--emerald"><Target size={14} className="text-violet-400" /> Gene Statistics</h4>
                      <div className="space-y-4">
                         <div className="flex justify-between border-b border-slate-800 pb-2">
                            <span className="text-slate-400 text-xs">Unique Genes</span>
@@ -647,8 +647,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                </div>
 
                {/* 6.2 Correlation Analysis */}
-               <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                  <h4 className="text-sm font-bold text-white mb-6 uppercase tracking-widest flex items-center gap-2"><Zap size={16} className="text-primary" /> Correlation Analysis</h4>
+               <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                  <h4 className="text-sm font-bold text-white mb-6 uppercase tracking-widest flex items-center gap-2 mm-section-accent mm-section-accent--emerald"><Zap size={16} className="text-primary" /> Correlation Analysis</h4>
                   <div className="flex flex-col md:flex-row gap-8 items-center">
                     <div className="relative w-40 h-40 flex items-center justify-center">
                        <svg className="w-full h-full transform -rotate-90">
@@ -673,8 +673,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
           {activeTab === 'hotspots' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in duration-500">
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                <h3 className="text-sm font-bold text-slate-400 uppercase mb-6 flex items-center gap-2"><Layout size={16} className="text-primary" /> Gene-Level Hotspots</h3>
+              <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                <h3 className="text-sm font-bold text-slate-400 uppercase mb-6 flex items-center gap-2 mm-section-accent mm-section-accent--emerald"><Layout size={16} className="text-primary" /> Gene-Level Hotspots</h3>
                 <div className="space-y-4">
                   {uniqueGenes.slice(0, 5).map((gene, i) => (
                     <div key={i} className="bg-slate-950 border border-slate-800 p-4 rounded-xl group hover:border-primary/40 transition-colors flex justify-between items-center">
@@ -686,8 +686,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                   ))}
                 </div>
               </div>
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                 <h3 className="text-sm font-bold text-slate-400 uppercase mb-6 flex items-center gap-2"><Zap size={16} className="text-primary" /> 7-Day Performance Trends</h3>
+              <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl">
+                 <h3 className="text-sm font-bold text-slate-400 uppercase mb-6 flex items-center gap-2 mm-section-accent mm-section-accent--emerald"><Zap size={16} className="text-primary" /> 7-Day Performance Trends</h3>
                  <div className="grid grid-cols-1 gap-3">
                     {[
                        { label: "Confidence", value: `${stats.confidence.mean.toFixed(1)}%`, trend: stats.trends.confidence, icon: <Shield size={16}/> },
@@ -712,7 +712,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
           {activeTab === 'temporal' && (
             <div className="space-y-8 animate-in slide-in-from-bottom-2 duration-500">
-               <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl overflow-hidden relative">
+               <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 rounded-2xl overflow-hidden relative">
                 <div className="absolute top-0 right-0 p-8 opacity-5">
                   <HistoryIcon size={120} className="text-primary" />
                 </div>
@@ -739,3 +739,9 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 };
 
 export default memo(AnalyticsDashboard);
+
+
+
+
+
+

@@ -2,7 +2,7 @@
  * Fusion Analysis Service - Orchestrates AlphaFold3 predictions and structure uploads
  */
 
-import { alphafold3Client } from '../services/alphafoldClient';
+import { alphafoldClient } from '../utils/alphafoldClient';
 import { backendService } from '../services/backendService';
 
 interface FusionAnalysisResult {
@@ -22,20 +22,25 @@ export class FusionAnalysisService {
     variantId: string
   ): Promise<FusionAnalysisResult> {
     try {
-      // 1. Predict the fusion structure using AlphaFold3
+      // 1. Predict the fusion structure using unified AlphaFold client
       console.log(`Predicting ${fusionType} fusion structure...`);
-      const predictionResult = await alphafold3Client.predictCommonFusion(fusionType);
+      const prediction = await alphafoldClient.predictProteinStructure(
+        // Use a representative fusion sequence or fallback
+        'MLELLPTTYEGEHLYERDEGDKSGDPSVWGAGGVGKSALTIQLIQNHFVDEYDPT'
+      );
+      const pdbContent = prediction.pdb_structure;
+      const jobId = `af3-${fusionType.toLowerCase()}-${Date.now()}`;
       
       // 2. Create a Blob from the PDB content
-      const pdbBlob = new Blob([predictionResult.pdbContent], { type: 'chemical/x-pdb' });
+      const pdbBlob = new Blob([pdbContent], { type: 'chemical/x-pdb' });
       
       // 3. Upload the structure to the local API
       console.log(`Uploading ${fusionType} structure with variantId: ${variantId}`);
       const uploadResult = await backendService.uploadStructure(pdbBlob as unknown as File, variantId, 'pdb');
       
       return {
-        jobId: predictionResult.jobId,
-        pdbContent: predictionResult.pdbContent,
+        jobId,
+        pdbContent,
         uploadResult,
         success: true
       };

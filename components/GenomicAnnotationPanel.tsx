@@ -10,6 +10,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import OrthologTable from './OrthologTable';
+import DnaHelixBackdrop from './DnaHelixBackdrop';
 
 interface GenomicAnnotationPanelProps {
   data: GenomicContext | null;
@@ -182,6 +183,7 @@ const PTMVisualization: React.FC<{ ptms: PTM[]; proteinLength: number }> = ({ pt
   }, [selectedTypes]);
 
   const ptmTypesWithCounts = useMemo(() => {
+    if (!Array.isArray(ptms)) return [];
     const counts: Record<string, number> = {};
     ptms.forEach(p => {
       counts[p.type] = (counts[p.type] || 0) + 1;
@@ -190,6 +192,7 @@ const PTMVisualization: React.FC<{ ptms: PTM[]; proteinLength: number }> = ({ pt
   }, [ptms]);
 
   const filteredPtms = useMemo(() => {
+    if (!Array.isArray(ptms)) return [];
     return ptms.filter(p => {
       const typeMatch = selectedTypes.size === 0 || selectedTypes.has(p.type);
       const searchMatch = p.type.toLowerCase().includes(searchQuery.toLowerCase());
@@ -284,7 +287,7 @@ const PTMVisualization: React.FC<{ ptms: PTM[]; proteinLength: number }> = ({ pt
                 </span>
               </button>
             );
-            })()}
+            })}
           </div>
 
           {(selectedTypes.size > 0 || searchQuery || minConf > 0) && (
@@ -505,27 +508,29 @@ const GenomicAnnotationPanel: React.FC<GenomicAnnotationPanelProps> = ({ data, l
     </div>
   );
 
-  const displayPtms = ptms || data.ptms || [];
+  const displayPtms: PTM[] = Array.isArray(ptms) ? ptms : Array.isArray(data.ptms) ? data.ptms : [];
 
   return (
     <>
-      <div className="bg-slate-850 rounded-2xl border border-slate-700 overflow-hidden flex flex-col shadow-2xl animate-in fade-in duration-700">
-        <div className="p-5 border-b border-slate-700 bg-slate-900/50 flex justify-between items-center">
+      <div className="mm-card-glowing mm-glow mm-glow--purple overflow-hidden flex flex-col shadow-2xl animate-in fade-in duration-700 relative group">
+        <DnaHelixBackdrop color="purple" opacity={0.20} motionVariant="fluid" seed="genomic-annotation" />
+        <div className="p-5 border-b border-purple-500/25 bg-slate-950/80 flex justify-between items-center relative z-10">
           <div className="flex items-center gap-3">
-             <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
-                <BookOpen size={18} className="text-primary" />
+             <div className="mm-section-accent mm-section-accent--purple" />
+             <div className="p-2 bg-purple-500/20 rounded-lg border border-purple-500/30">
+                <BookOpen size={18} className="text-purple-400" />
              </div>
-             <h3 className="font-bold text-white tracking-tight">AlphaGenome Annotator</h3>
+             <h3 className="font-bold text-white tracking-tight text-sm uppercase">AlphaGenome Annotator</h3>
           </div>
-          <span className="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded-md font-mono border border-slate-700">v4.2.0</span>
+          <span className="text-[9px] bg-purple-950/60 text-purple-300 px-2 py-1 rounded-md font-mono border border-purple-500/30 font-bold">v4.2.0</span>
         </div>
-        <div className="p-6 space-y-8 flex-1 overflow-y-auto custom-scrollbar">
+        <div className="p-6 space-y-8 flex-1 overflow-y-auto custom-scrollbar relative z-10">
           <PTMVisualization ptms={displayPtms} proteinLength={data.proteinLength || 1000} />
           
           <div className="pt-4 border-t border-slate-800">
              <button 
                onClick={() => setIsModalOpen(true)} 
-               className="w-full py-4 bg-primary hover:bg-primary-hover text-white text-xs font-black rounded-xl border border-primary/20 transition-all uppercase tracking-widest shadow-lg shadow-primary/20 group flex items-center justify-center gap-3"
+               className="mm-btn-tactical !w-full !py-3.5 !rounded-xl !bg-purple-600 hover:!bg-purple-500 text-white text-xs font-black transition-all uppercase tracking-widest shadow-[0_0_20px_rgba(168,85,247,0.4)] group flex items-center justify-center gap-3"
              >
                Explore Full Evidence Context <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
              </button>

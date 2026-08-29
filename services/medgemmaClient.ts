@@ -1,5 +1,4 @@
 
-import { GoogleGenAI } from "@google/genai";
 import { MedGemmaAnalysis } from '../types/medgemma';
 
 const CACHE_KEY_PREFIX = 'medgemma_cache_';
@@ -96,102 +95,32 @@ export const medgemmaClient = {
       try {
         const parsed = JSON.parse(cached);
         if (Date.now() - parsed.timestamp < CACHE_TTL) {
-          return { ...parsed, isCached: true };
+          return { ...parsed, isCached: true, source: 'CACHE' };
         }
       } catch (e) {
         localStorage.removeItem(cacheKey);
       }
     }
 
-    // 2. Real API Call with Retry Logic (Section 6.1)
-    // Guidelines require using process.env.API_KEY exclusively for Gemini API
-    if (process.env.API_KEY) {
-      let attempts = 0;
-      const MAX_RETRIES = 3;
-
-      while (attempts < MAX_RETRIES) {
-        try {
-          // Strictly using process.env.API_KEY for initialization
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          // Selecting gemini-3-flash-preview for basic text tasks (clinical interpretation)
-          const modelId = "gemini-3-flash-preview";
-
-          const systemInstruction = `You are MedGemma, a clinical genetics expert. Provide concise, accurate clinical interpretations of genetic mutations. Include:
-1. Pathogenicity assessment (benign/VUS/pathogenic)
-2. Disease association
-3. Treatment recommendations
-4. Clinical significance
-Format: Clear, evidence-based, professional.`;
-
-          const prompt = `
-            Analyze the following genetic variant:
-            Gene: ${gene}
-            Variant: ${variant}
-
-            Provide a strict JSON response containing the following clinical insights:
-            {
-              "pathogenicity": "Benign|VUS|Pathogenic",
-              "confidence": "Low|Medium|High",
-              "confidenceScore": 0-100,
-              "diseases": ["Disease Name"],
-              "inheritanceMode": "Mode",
-              "mechanism": "2-3 sentence clinical mechanism description",
-              "clinicalSignificance": "Summary of impact, prognostic factors, and known complications",
-              "populationFrequency": "e.g. <0.001%",
-              "treatments": [
-                { "name": "Drug/Therapy", "type": "Category", "mechanism": "Action", "evidenceLevel": "Status" }
-              ],
-              "phenotype": {
-                "onset": "Age",
-                "severity": "Level",
-                "affectedSystems": ["List"],
-                "lifeExpectancyImpact": "Description"
-              },
-              "citations": ["PMID: 123456"],
-              "drugInteractions": ["List of potential drug-gene interactions or contraindications"]
-            }
-          `;
-
-          const response = await ai.models.generateContent({
-            model: modelId,
-            contents: prompt,
-            config: { 
-              responseMimeType: "application/json",
-              temperature: 0.3,
-              maxOutputTokens: 1000,
-              systemInstruction: systemInstruction 
-            }
-          });
-
-          if (response.text) {
-            const data = JSON.parse(response.text);
-            const result: MedGemmaAnalysis = {
-              ...data,
-              variantId,
-              gene,
-              timestamp: Date.now()
-            };
-            
-            localStorage.setItem(cacheKey, JSON.stringify(result));
-            return result;
-          }
-          break; // Exit loop on success (even if text empty, don't retry same logic)
-        } catch (e: any) {
-          // 429 Rate Limit Handling
-          if (e.message?.includes('429') || e.status === 429) {
-            attempts++;
-            const backoff = 1000 * Math.pow(2, attempts);
-            console.warn(`MedGemma Rate Limit. Retrying in ${backoff}ms...`);
-            await delay(backoff);
-          } else {
-            console.warn("MedGemma API Error:", e);
-            break; // Don't retry other errors
-          }
-        }
+    // Backend-routed Gemini clinical interpretation.
+    try {
+      const backendUrl = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:5000';
+      const response = await fetch(`${backendUrl}/api/ai/clinical-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gene, variant })
+      });
+      if (response.ok) {
+        const result = await response.json() as MedGemmaAnalysis;
+        localStorage.setItem(cacheKey, JSON.stringify(result));
+        return result;
       }
+      console.warn(`Clinical Gemini backend returned ${response.status}; using benchmark fallback.`);
+    } catch (error) {
+      console.warn('Clinical Gemini backend unavailable; using benchmark fallback.', error);
     }
 
-    // 3. Fallback / Mock Data (Model unavailable fallback)
+    // Explicit benchmark fallback (not a separate MedGemma model).
     await delay(1500); // Simulate thinking
     
     const mockMatch = MOCK_DATA[variantId];
@@ -200,7 +129,8 @@ Format: Clear, evidence-based, professional.`;
          ...mockMatch,
          variantId,
          gene,
-         timestamp: Date.now()
+          timestamp: Date.now(),
+          source: 'SIMULATION'
        } as MedGemmaAnalysis;
     }
 
@@ -226,6 +156,7 @@ Format: Clear, evidence-based, professional.`;
       citations: [],
       populationFrequency: "Unknown",
       drugInteractions: []
+      ,source: 'SIMULATION'
     };
   }
 };

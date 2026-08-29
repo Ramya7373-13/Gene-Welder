@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { SplicingAnalysisResult } from '../../types/splicing';
-import { Check, AlertTriangle, Info, ArrowRight, AlertCircle } from 'lucide-react';
+import { Check, AlertTriangle, Info, ArrowRight, AlertCircle, Dna } from 'lucide-react';
+import DnaHelixBackdrop from '../DnaHelixBackdrop';
 
 interface SplicingVisualizerProps {
   data: SplicingAnalysisResult;
@@ -21,7 +22,7 @@ const SplicingVisualizer: React.FC<SplicingVisualizerProps> = React.memo(({ data
   // If no exons, render a placeholder or minimal view
   if (exonCount === 0) {
     return (
-      <div className="w-full bg-slate-900 rounded-xl border border-slate-700 p-6 shadow-inner flex flex-col items-center justify-center h-[320px] text-slate-500 animate-in fade-in duration-500">
+      <div className="w-full mm-card-glowing mm-glow mm-glow--purple p-6 shadow-inner flex flex-col items-center justify-center h-[320px] text-slate-500 animate-in fade-in duration-500">
         <AlertTriangle size={32} className="mb-2 opacity-50" />
         <p>No exon data available for visualization.</p>
       </div>
@@ -53,12 +54,17 @@ const SplicingVisualizer: React.FC<SplicingVisualizerProps> = React.memo(({ data
   const getWidthClass = (percent: number) => `w-p-${Math.round(Math.max(0, Math.min(100, percent)))}`;
 
   return (
-    <div className="w-full bg-slate-900 rounded-xl border border-slate-700 p-6 shadow-inner flex flex-col hover:border-slate-600 transition-colors duration-300">
+    <div className="w-full mm-card-glowing mm-glow mm-glow--cyan p-6 shadow-xl flex flex-col relative overflow-hidden group">
+      <DnaHelixBackdrop color="cyan" opacity={0.22} speed={0.8} motionVariant="fluid" seed="splice-visualizer" />
       {/* Header / Legend */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <h3 className="text-white font-semibold flex items-center gap-2" id="gene-model-title">
-          🧬 {data.gene} Gene Model <span className="text-slate-500 text-sm font-normal">({exonCount} Exons)</span>
-        </h3>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 relative z-10">
+        <div className="flex items-center gap-2.5">
+          <div className="mm-section-accent" />
+          <h3 className="text-white font-black text-sm uppercase tracking-wider flex items-center gap-2" id="gene-model-title">
+            <Dna size={16} className="text-cyan-400" />
+            {data.gene} Gene Model <span className="text-slate-400 text-xs font-bold font-mono">({exonCount} Exons)</span>
+          </h3>
+        </div>
         <div className="flex flex-wrap gap-3 text-xs bg-slate-800 p-2 rounded-lg border border-slate-700 shadow-sm">
           <div className="flex items-center gap-1.5 px-2">
             <span className="w-3 h-3 bg-emerald-500 rounded-sm shadow-[0_0_5px_rgba(16,185,129,0.4)]"></span>

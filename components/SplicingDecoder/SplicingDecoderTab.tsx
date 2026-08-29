@@ -12,6 +12,9 @@ import {
   CheckCircle2, FlaskConical, WifiOff, Trash2, History, BarChart3, Layers, Download, Copy, 
   FileJson, ChevronDown, Check, AlertTriangle, ArrowRight, Minimize2, Box, BrainCircuit, Clock, RotateCcw, ChevronRight, Scale, HelpCircle, MousePointer2
 } from 'lucide-react';
+import EmptyState from '../EmptyState';
+import { configService } from '../../services/configService';
+import DnaHelixBackdrop from '../DnaHelixBackdrop';
 
 // Storage Keys
 const STORAGE_KEYS = {
@@ -21,16 +24,78 @@ const STORAGE_KEYS = {
   SESSION: 'mutationMechanic_splicing_decoder'
 };
 
-const MAX_HISTORY_ITEMS = 10;
+export interface SplicingPreset {
+  label: string;
+  gene: string;
+  variant: string;
+  mechanism: string;
+  chromosome: string;
+  position: string;
+  reference: string;
+  alternate: string;
+}
 
-const SPLICING_EXAMPLES = [
-  { label: 'SMA: SMN1 Exon 7 Skipping', gene: 'SMN1', variant: 'c.840+2T>G' },
-  { label: 'CF: CFTR Deep Intronic', gene: 'CFTR', variant: 'c.3849+10kbC>T' },
-  { label: 'LFS: TP53 Donor Disruption', gene: 'TP53', variant: 'c.743G>A' },
-  { label: 'DMD Exon 44 Skipping', gene: 'DMD', variant: 'c.6429+1G>A' },
-  { label: 'CFTR F508del (Folding Defect)', gene: 'CFTR', variant: 'c.1521_1523delCTT' },
-  { label: 'BRCA1 Exon 11 Donor', gene: 'BRCA1', variant: 'c.4065_4068delTCAA' },
-  { label: 'NF1 Deep Intronic', gene: 'NF1', variant: 'c.5749+333C>G' }
+const SPLICING_EXAMPLES: SplicingPreset[] = [
+  {
+    label: 'SMA: SMN1 Exon 7 Donor Loss',
+    gene: 'SMN1',
+    variant: 'c.840+2T>G',
+    mechanism: 'Canonical Donor Loss (ΔDL=0.99)',
+    chromosome: '5',
+    position: '70952001',
+    reference: 'T',
+    alternate: 'G'
+  },
+  {
+    label: 'CF: CFTR Deep Intronic Cryptic Exon',
+    gene: 'CFTR',
+    variant: 'c.3849+10kbC>T',
+    mechanism: 'Cryptic Donor Activation (ΔDG=0.94)',
+    chromosome: '7',
+    position: '117587780',
+    reference: 'C',
+    alternate: 'T'
+  },
+  {
+    label: 'LFS: TP53 Exon 7 Disruption',
+    gene: 'TP53',
+    variant: 'c.743G>A',
+    mechanism: 'Donor Site Disruption (chr17)',
+    chromosome: '17',
+    position: '7577538',
+    reference: 'C',
+    alternate: 'T'
+  },
+  {
+    label: 'DMD: Dystrophin Exon 44 Skipping',
+    gene: 'DMD',
+    variant: 'c.6429+1G>A',
+    mechanism: 'Splice Donor Invariant Site',
+    chromosome: 'X',
+    position: '31804700',
+    reference: 'G',
+    alternate: 'A'
+  },
+  {
+    label: 'NF1: Deep Intronic Cryptic Splice',
+    gene: 'NF1',
+    variant: 'c.5749+333C>G',
+    mechanism: 'Cryptic Splice Activation',
+    chromosome: '17',
+    position: '31252000',
+    reference: 'C',
+    alternate: 'G'
+  },
+  {
+    label: 'BRCA1: Exon 11 Splice Junction Deletion',
+    gene: 'BRCA1',
+    variant: 'c.4065_4068delTCAA',
+    mechanism: 'Splice Junction Frameshift',
+    chromosome: '17',
+    position: '43070900',
+    reference: 'TCAA',
+    alternate: 'T'
+  }
 ];
 
 // SECTION 7.4: Notification System with auto-dismiss logic
@@ -190,20 +255,20 @@ const ConfidenceMeter: React.FC<{ confidence: number }> = memo(({ confidence }) 
     const getWidthClass = (percent: number) => `w-p-${Math.round(Math.max(0, Math.min(100, percent)))}`;
 
     return (
-        <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700 animate-in fade-in duration-700">
-           <div className="flex justify-between items-end mb-2">
-             <div className="text-xs text-slate-400 uppercase tracking-wider flex items-center">
+        <div className="mm-card-glowing mm-glow mm-glow--blue p-4 animate-in fade-in duration-700 relative overflow-hidden">
+           <div className="flex justify-between items-end mb-2 relative z-10">
+             <div className="text-xs text-slate-300 font-bold uppercase tracking-wider flex items-center">
                Model Confidence
                <MetricInfo title="Model Confidence" content="Statistical certainty of the DeepSplicer model across the 10kb sequence window." />
              </div>
-             <div className={`font-bold ${colorClass}`}>{confidence}%</div>
+             <div className={`font-mono font-black text-sm ${colorClass}`}>{confidence}%</div>
            </div>
-           <div ref={progressRef} className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mb-2 shadow-inner" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Prediction Confidence">
+           <div ref={progressRef} className="w-full bg-slate-950 h-2 rounded-full overflow-hidden mb-2 shadow-[inset_0_0_8px_rgba(0,0,0,0.8)] border border-slate-750 relative z-10" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Prediction Confidence">
               <div 
-                className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.1)] ${barColor} ${getWidthClass(width)}`} 
+                className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_12px_rgba(59,130,246,0.5)] ${barColor} ${getWidthClass(width)}`} 
               ></div>
            </div>
-           <p className="text-[10px] text-slate-400 text-right italic">{message}</p>
+           <p className="text-[10px] text-slate-400 text-right italic relative z-10">{message}</p>
         </div>
     );
 });
@@ -218,43 +283,43 @@ const SpliceSiteDiagram: React.FC<{ variant: string; gene: string; severity: str
   const alt = mutMatch ? mutMatch[2] : '?';
 
   return (
-    <div className="bg-slate-900 rounded-xl border border-slate-700 overflow-hidden font-mono text-sm shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100">
-        <div className="bg-slate-950 p-3 border-b border-slate-800 flex justify-between items-center">
-            <span className="text-slate-400 font-bold text-xs uppercase flex items-center gap-2">
-               <Activity size={14} /> Splice Site Analysis
+    <div className="mm-card-glowing mm-glow mm-glow--purple overflow-hidden font-mono text-sm shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 relative">
+        <div className="bg-slate-950/90 p-3 border-b border-purple-500/30 flex justify-between items-center relative z-10">
+            <span className="text-purple-300 font-bold text-xs uppercase flex items-center gap-2">
+               <Activity size={14} className="text-purple-400" /> Splice Site Topology
             </span>
-            <span className={`text-[10px] px-2 py-0.5 rounded border ${severity === 'SEVERE' ? 'border-red-500/50 text-red-400 bg-red-900/20' : 'border-slate-600 text-slate-400'}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded border font-bold uppercase ${severity === 'SEVERE' ? 'border-red-500/50 text-red-400 bg-red-950/40 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : 'border-slate-600 text-slate-400'}`}>
                 {isDonor ? "5' Donor Site" : isAcceptor ? "3' Acceptor Site" : "Exonic/Deep Intronic"}
             </span>
         </div>
-        <div className="p-6 flex flex-col items-center relative" role="img" aria-label={`Diagram showing ${isDonor ? "donor" : "acceptor"} splice site disruption`}>
-            <div className="w-full flex justify-between text-[10px] text-slate-500 mb-2 uppercase tracking-widest">
-                <span>Exon</span>
-                <span>Intron</span>
+        <div className="p-6 flex flex-col items-center relative z-10" role="img" aria-label={`Diagram showing ${isDonor ? "donor" : "acceptor"} splice site disruption`}>
+            <div className="w-full flex justify-between text-[10px] text-slate-400 mb-2 uppercase tracking-widest font-bold">
+                <span>Exon Boundary</span>
+                <span>Intron Segment</span>
             </div>
             <div className="flex items-center justify-center gap-0.5 mb-4">
-                <div className={`px-3 py-2 bg-slate-800 border-y border-l ${severity === 'SEVERE' ? 'border-red-900/30' : 'border-slate-600'} rounded-l text-slate-300`}>
+                <div className={`px-3 py-2 bg-slate-950 border-y border-l ${severity === 'SEVERE' ? 'border-red-500/40' : 'border-slate-700'} rounded-l text-slate-300 font-bold`}>
                    {isDonor ? '...CAG' : '...'}
                 </div>
-                <div className={`px-2 py-2 font-bold border-y ${severity === 'SEVERE' ? 'bg-red-900/20 border-red-500 text-red-400' : 'bg-green-900/20 border-green-500 text-green-400'}`}>
+                <div className={`px-2.5 py-2 font-black border-y ${severity === 'SEVERE' ? 'bg-red-950/60 border-red-500 text-red-300 shadow-[0_0_12px_rgba(239,68,68,0.5)]' : 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.5)]'}`}>
                    {isDonor ? 'GT' : 'AG'}
                 </div>
-                <div className={`px-3 py-2 bg-slate-800 border-y border-r ${severity === 'SEVERE' ? 'border-red-900/30' : 'border-slate-600'} rounded-r text-slate-300`}>
+                <div className={`px-3 py-2 bg-slate-950 border-y border-r ${severity === 'SEVERE' ? 'border-red-500/40' : 'border-slate-700'} rounded-r text-slate-300 font-bold`}>
                    {isDonor ? 'AAGT...' : '...CAG'}
                 </div>
             </div>
             <div className="flex flex-col items-center animate-bounce">
-                <ArrowRight className="rotate-[270deg] text-red-500 mb-1" size={16} />
-                <span className="text-xs text-red-400 font-bold bg-red-900/30 px-2 py-1 rounded border border-red-500/30">
+                <ArrowRight className="rotate-[270deg] text-rose-400 mb-1" size={16} />
+                <span className="text-xs text-rose-300 font-mono font-bold bg-rose-950/60 px-2.5 py-1 rounded border border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.4)]">
                    {ref} &rarr; {alt}
                 </span>
-                <span className="text-[10px] text-slate-500 mt-1">Position: {position}</span>
+                <span className="text-[10px] text-slate-400 mt-1 font-mono">Relative Pos: {position}</span>
             </div>
         </div>
-        <div className="bg-slate-950/50 p-3 border-t border-slate-800">
+        <div className="bg-slate-950/70 p-3 border-t border-purple-500/20 relative z-10">
             <div className="flex items-center gap-2 text-xs">
-               <AlertCircle size={14} className={severity === 'SEVERE' ? 'text-red-500' : 'text-yellow-500'} />
-               <span className="text-slate-300">
+               <AlertCircle size={14} className={severity === 'SEVERE' ? 'text-red-400 shrink-0' : 'text-amber-400 shrink-0'} />
+               <span className="text-slate-300 text-[11px] leading-tight">
                   {severity === 'SEVERE' 
                     ? `Variant disrupts canonical ${isDonor ? "5'" : "3'"} splice consensus sequence.`
                     : "Variant creates potential cryptic splice site nearby."}
@@ -266,15 +331,15 @@ const SpliceSiteDiagram: React.FC<{ variant: string; gene: string; severity: str
 });
 
 const TherapyCard: React.FC<{ title: string; option: TherapyOption; icon: React.ReactNode }> = memo(({ title, option, icon }) => (
-    <div className={`flex flex-col p-4 rounded-xl border transition-all duration-300 hover:shadow-md ${option.suitable ? 'bg-green-900/10 border-green-800 hover:border-green-700 hover:bg-green-900/20' : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'}`}>
-        <div className="flex items-center gap-3 mb-2">
-            <div className={`p-2 rounded-lg ${option.suitable ? 'text-green-400 bg-green-900/30' : 'text-slate-400 bg-slate-800'}`}>{icon}</div>
+    <div className={`mm-card-glowing mm-glow ${option.suitable ? 'mm-glow--emerald' : 'mm-glow--purple'} flex flex-col p-4 transition-all duration-300 hover:shadow-lg`}>
+        <div className="flex items-center gap-3 mb-2 relative z-10">
+            <div className={`p-2 rounded-xl border ${option.suitable ? 'text-emerald-300 bg-emerald-950/60 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'text-slate-400 bg-slate-950 border-slate-750'}`}>{icon}</div>
             <div>
-                <h4 className="font-semibold text-sm text-slate-200">{title}</h4>
-                <div className={`text-[10px] uppercase font-bold ${option.suitable ? 'text-green-400' : 'text-slate-500'}`}>{option.suitable ? 'SUITABLE' : 'NOT INDICATED'}</div>
+                <h4 className="font-bold text-sm text-slate-200">{title}</h4>
+                <div className={`text-[10px] uppercase font-extrabold ${option.suitable ? 'text-emerald-400' : 'text-slate-500'}`}>{option.suitable ? 'SUITABLE' : 'NOT INDICATED'}</div>
             </div>
         </div>
-        <p className="text-xs text-slate-400">{option.reasoning}</p>
+        <p className="text-xs text-slate-300 relative z-10 leading-relaxed">{option.reasoning}</p>
     </div>
 ));
 
@@ -291,7 +356,7 @@ const ExportMenu: React.FC<{ data: SplicingAnalysisResult; onExport: (type: 'jso
 
 const SplicingDecoderTab: React.FC = () => {
   const [mode, setMode] = useState<'single' | 'compare'>('single');
-  const [input, setInput] = useState({ gene: '', variant: '' });
+  const [input, setInput] = useState({ gene: '', variant: '', chromosome: '', position: '', reference: '', alternate: '' });
   const [result, setResult] = useState<SplicingAnalysisResult | null>(null);
   const [structurePdb, setStructurePdb] = useState<string | null>(null); 
   const [structureConfidence, setStructureConfidence] = useState<number>(0);
@@ -329,7 +394,7 @@ const SplicingDecoderTab: React.FC = () => {
     if (savedSession) {
       try {
         const session: SavedSession = JSON.parse(savedSession);
-        setInput({ gene: session.targetGene, variant: session.variantNotation });
+        setInput(prev => ({ ...prev, gene: session.targetGene, variant: session.variantNotation }));
         setResult(session.analysisResults);
         setStructurePdb(session.structurePdb);
         setStructureConfidence(session.structureConfidence);
@@ -355,7 +420,7 @@ const SplicingDecoderTab: React.FC = () => {
   };
 
   const loadFromHistory = (item: HistoryItem) => {
-    setInput({ gene: item.gene, variant: item.variant });
+    setInput(prev => ({ ...prev, gene: item.gene, variant: item.variant }));
     setResult(item.result);
     setStructurePdb(item.structurePdb);
     setStructureConfidence(item.structureConfidence);
@@ -400,7 +465,7 @@ const SplicingDecoderTab: React.FC = () => {
         localStorage.removeItem(STORAGE_KEYS.TEMP);
         localStorage.removeItem(STORAGE_KEYS.COUNT);
         setHistory([]);
-        setInput({ gene: '', variant: '' });
+        setInput({ gene: '', variant: '', chromosome: '', position: '', reference: '', alternate: '' });
         setResult(null);
         setStructurePdb(null);
         setClinicalAnalysis(null);
@@ -445,11 +510,36 @@ const SplicingDecoderTab: React.FC = () => {
              }
           })
           .catch(e => {
-             console.warn("MedGemma failed", e);
+             console.warn("Gemini clinical analysis failed", e);
              setClinicalLoading(false);
           });
         const data = await dataPromise;
-        setResult(data);
+        try {
+          const backendUrl = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:5000';
+          const spliceResponse = await fetch(`${backendUrl}/api/spliceai`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gene: input.gene,
+              variant: input.variant,
+              chromosome: input.chromosome || undefined,
+              position: input.position ? Number(input.position) : undefined,
+              reference: input.reference || undefined,
+              alternate: input.alternate || undefined
+            })
+          });
+          if (spliceResponse.ok) {
+            const spliceData = await spliceResponse.json();
+            enrichedData = { ...data, spliceAiScores: spliceData.scores, spliceAiSource: spliceData.source };
+          } else {
+            console.warn('SpliceAI unavailable:', await spliceResponse.text());
+            enrichedData = { ...data, spliceAiSource: 'SIMULATION' };
+          }
+        } catch (spliceError) {
+          console.warn('SpliceAI request failed:', spliceError);
+          enrichedData = { ...data, spliceAiSource: 'SIMULATION' };
+        }
+        setResult(enrichedData);
         const dummySequence = "M" + "L".repeat(50) + "A".repeat(50);
         const afResult = await alphafoldClient.predictProteinStructure(dummySequence);
         setStructurePdb(afResult.pdb_structure);
@@ -508,7 +598,7 @@ const SplicingDecoderTab: React.FC = () => {
   };
 
   const clearForm = () => {
-    setInput({ gene: '', variant: '' });
+    setInput({ gene: '', variant: '', chromosome: '', position: '', reference: '', alternate: '' });
     setResult(null);
     setStructurePdb(null);
     setClinicalAnalysis(null);
@@ -518,8 +608,16 @@ const SplicingDecoderTab: React.FC = () => {
     localStorage.removeItem(STORAGE_KEYS.SESSION);
   };
 
-  const setPreset = (gene: string, variant: string) => {
-    setInput({ gene, variant });
+  const setPreset = (preset: SplicingPreset | { gene: string; variant: string; chromosome?: string; position?: string; reference?: string; alternate?: string }) => {
+    const fullPreset = SPLICING_EXAMPLES.find(p => p.gene.toUpperCase() === preset.gene.toUpperCase() && p.variant.toUpperCase() === preset.variant.toUpperCase());
+    setInput({
+      gene: preset.gene,
+      variant: preset.variant,
+      chromosome: fullPreset?.chromosome || preset.chromosome || '',
+      position: fullPreset?.position || preset.position || '',
+      reference: fullPreset?.reference || preset.reference || '',
+      alternate: fullPreset?.alternate || preset.alternate || ''
+    });
     setIsExamplesOpen(false);
   };
 
@@ -579,53 +677,66 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
       
-      {/* Header Section */}
-      <div className="bg-slate-800 rounded-xl shadow-lg p-8 border-l-4 border-violet-600 relative overflow-hidden group hover:border-violet-500 transition-colors duration-300">
-        <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity duration-500">
-           <GitMerge size={120} />
-        </div>
+      {/* Top Hero Banner */}
+      <div className="mm-card-glowing mm-glow mm-glow--purple p-8 relative overflow-hidden group shadow-2xl">
+        <DnaHelixBackdrop color="purple" opacity={0.25} speed={0.9} motionVariant="fluid" seed="splice-hero" />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-2">
-            <GitMerge className="text-violet-600" size={32} />
-            <h2 className="text-3xl font-bold text-white">Splicing Decoder</h2>
+            <div className="mm-section-accent mm-section-accent--purple" />
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.25em] text-purple-400">Neural Splicing Intelligence</span>
+            <span className="flex items-center gap-1.5 text-[10px] font-bold text-purple-300 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-500/40">
+              <span className="mm-status-dot text-purple-400" />
+              SPLICEAI ACTIVE
+            </span>
           </div>
-          <p className="text-slate-300 text-lg max-w-2xl">
-            Analyze intronic variants for cryptic splicing, exon skipping, and therapeutic amenability using deep learning models.
+          <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+            <GitMerge className="text-purple-400" size={30} />
+            Splicing Decoder
+          </h2>
+          <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+            Analyze canonical donor/acceptor disruptions, cryptic exon activation, and therapeutic amenability (ASO, Small Molecule) using Illumina SpliceAI deep residual neural networks.
           </p>
         </div>
       </div>
 
       {/* History Drawer */}
       {showHistory && (
-        <div className="absolute right-0 top-0 w-full max-w-md bg-slate-900 border border-slate-700 shadow-2xl rounded-xl z-50 p-4 animate-in fade-in slide-in-from-right-10 min-h-[400px]">
+        <div className="absolute right-0 top-0 w-full max-w-md bg-slate-950 border border-purple-500/40 shadow-2xl rounded-2xl z-50 p-5 animate-in fade-in slide-in-from-right-10 min-h-[400px]">
           <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-            <h3 className="font-bold text-white flex items-center gap-2"><History size={18}/> Recent Analyses</h3>
-            <button onClick={() => setShowHistory(false)} aria-label="Close history"><X size={18} /></button>
+            <h3 className="font-bold text-white flex items-center gap-2 text-sm uppercase tracking-wider"><History size={16} className="text-purple-400"/> Recent Analyses</h3>
+            <button onClick={() => setShowHistory(false)} aria-label="Close history" className="text-slate-400 hover:text-white"><X size={18} /></button>
           </div>
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-             {history.length === 0 && <p className="text-slate-500 text-sm text-center py-4">No recent history.</p>}
+             {history.length === 0 && (
+               <EmptyState
+                 icon={History}
+                 headline="No recent analyses"
+                 subtext="Previous analyses will appear here once you run them."
+                 size="compact"
+               />
+             )}
              {history.map((item) => (
-               <div key={item.id} className="w-full text-left bg-slate-800 hover:bg-slate-750 p-3 rounded-lg border border-slate-700 mb-2 group relative">
+               <div key={item.id} className="w-full text-left bg-slate-900/90 hover:bg-slate-850 p-3.5 rounded-xl border border-slate-750 mb-2 group relative transition-all">
                  <div className="flex justify-between items-start">
                     <div className="min-w-0 flex-1 mr-2">
-                        <div className="font-bold text-white truncate" title={item.gene}>{item.gene}</div>
-                        <div className="text-xs text-primary font-mono truncate" title={item.variant}>{item.variant}</div>
+                        <div className="font-bold text-white truncate text-sm" title={item.gene}>{item.gene}</div>
+                        <div className="text-xs text-cyan-400 font-mono truncate" title={item.variant}>{item.variant}</div>
                     </div>
-                    <span className="text-[10px] text-slate-500 whitespace-nowrap">{new Date(item.timestamp).toLocaleDateString()}</span>
+                    <span className="text-[10px] text-slate-500 font-mono whitespace-nowrap">{new Date(item.timestamp).toLocaleDateString()}</span>
                  </div>
                  <div className="mt-2 flex items-center gap-2">
                     <RiskBadge severity={item.result.clinicalSeverity} score={getSeverityScore(item.result)} compact />
                  </div>
                  <button
                     onClick={(e) => { e.stopPropagation(); loadFromHistory(item); }}
-                    className="absolute bottom-3 right-12 text-xs text-primary hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute bottom-3 right-12 text-xs text-purple-400 hover:underline font-bold opacity-0 group-hover:opacity-100 transition-opacity"
                     aria-label={`Load analysis for ${item.gene} ${item.variant}`}
                  >
                     Load
                  </button>
                  <button 
                     onClick={(e) => deleteFromHistory(e, item.id)}
-                    className="absolute bottom-3 right-3 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute bottom-3 right-3 text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
                     aria-label="Delete item"
                  >
                     <Trash2 size={14} />
@@ -637,18 +748,23 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
       )}
 
       {/* Input Section */}
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-sm hover:border-slate-600 transition-colors duration-300 relative z-10">
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+      <div className="mm-card-glowing mm-glow mm-glow--purple p-6 shadow-xl relative z-10 overflow-hidden space-y-5">
+        <DnaHelixBackdrop color="purple" opacity={0.22} speed={0.8} motionVariant="fluid" seed="splice-input" />
+        
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-4 relative z-10">
           <div className="flex items-center gap-4">
-             <h3 className="text-white font-semibold flex items-center gap-2">
-               <Search size={18} className="text-primary"/> 
-               {mode === 'single' ? 'Variant Input' : 'Batch Comparison Input'}
-             </h3>
-             <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
+             <div className="flex items-center gap-2.5">
+               <div className="mm-section-accent mm-section-accent--purple" />
+               <h3 className="text-xs font-black text-slate-300 uppercase tracking-[0.2em] flex items-center gap-2">
+                 <Search size={16} className="text-purple-400"/> 
+                 {mode === 'single' ? 'Target Splicing Node' : 'Batch Comparison Node'}
+               </h3>
+             </div>
+             <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-750">
                 <button 
                    type="button"
                    onClick={() => setMode('single')}
-                   className={`px-3 py-1 text-xs rounded transition-all duration-200 active:scale-95 ${mode === 'single' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                   className={`px-3 py-1 text-xs font-bold rounded transition-all duration-200 active:scale-95 ${mode === 'single' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                    aria-label="Single Analysis Mode"
                 >
                    Single
@@ -656,7 +772,7 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
                 <button 
                    type="button"
                    onClick={() => setMode('compare')}
-                   className={`px-3 py-1 text-xs rounded transition-all duration-200 active:scale-95 flex items-center gap-1 ${mode === 'compare' ? 'bg-scientific-blue text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                   className={`px-3 py-1 text-xs font-bold rounded transition-all duration-200 active:scale-95 flex items-center gap-1 ${mode === 'compare' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'}`}
                    aria-label="Batch Comparison Mode"
                 >
                    <Scale size={10}/> Compare
@@ -665,15 +781,15 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded bg-slate-900 border border-slate-700 text-slate-300 text-xs font-mono font-medium shadow-sm">
-              <BarChart3 size={12} className="text-primary" /> Analyses: {analysisCount}
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-950/80 border border-slate-750 text-slate-300 text-xs font-mono font-bold shadow-sm">
+              <BarChart3 size={12} className="text-purple-400" /> Runs: {analysisCount}
             </span>
-            <button onClick={() => setShowHistory(!showHistory)} className={`flex items-center gap-1 text-xs px-3 py-1 rounded transition-colors active:scale-95 ${showHistory ? 'bg-primary text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`} aria-label="Toggle History">
+            <button onClick={() => setShowHistory(!showHistory)} className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-lg transition-all active:scale-95 ${showHistory ? 'bg-purple-600 text-white' : 'text-slate-300 hover:text-white bg-slate-900 border border-slate-750'}`} aria-label="Toggle History">
               <History size={12} /> History
             </button>
             <button 
                 onClick={clearAllData}
-                className="flex items-center gap-1 text-xs px-3 py-1 rounded transition-colors text-red-400 hover:text-white hover:bg-red-900/50 border border-transparent hover:border-red-900/50 active:scale-95"
+                className="flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-lg transition-colors text-rose-400 hover:text-white hover:bg-rose-950/50 border border-rose-500/20 active:scale-95"
                 title="Clear All Data & Reset"
                 aria-label="Clear All Data and Reset"
             >
@@ -682,35 +798,47 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
           </div>
         </div>
         
-        <form onSubmit={handleAnalyze}>
-           <div className="flex justify-between items-end mb-2">
-             <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider">
-                {mode === 'single' ? 'Target Gene & Variant' : 'Primary Variant (will compare vs SMN1/CFTR)'}
+        <form onSubmit={handleAnalyze} className="relative z-10 space-y-4">
+           <div className="flex justify-between items-end">
+             <label className="block text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                {mode === 'single' ? 'Target Gene & cDNA Variant' : 'Primary Variant (will compare vs SMN1/CFTR)'}
              </label>
-             {mode === 'single' && (
-                 <div className="relative" ref={exampleDropdownRef}>
-                    <button 
-                        type="button" 
-                        onClick={() => setIsExamplesOpen(!isExamplesOpen)}
-                        className="text-xs text-primary hover:text-white flex items-center gap-1 transition-colors font-medium"
-                    >
-                      Load Example <ChevronDown size={12} className={`transition-transform duration-200 ${isExamplesOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    {isExamplesOpen && (
-                        <div className="absolute right-0 top-full mt-1 w-64 bg-slate-800 border border-slate-700 rounded-lg shadow-xl animate-in fade-in zoom-in-95 z-50 overflow-hidden">
-                           {SPLICING_EXAMPLES.map((ex, i) => (
-                             <button key={i} type="button" onClick={() => setPreset(ex.gene, ex.variant)} className="w-full text-left px-3 py-2.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white border-b border-slate-700/50 last:border-0 transition-colors">
-                               <div className="font-bold text-white">{ex.label}</div>
-                               <div className="text-slate-500 font-mono mt-0.5">{ex.gene} : {ex.variant}</div>
-                             </button>
-                           ))}
-                        </div>
-                    )}
-                 </div>
-             )}
+             <div className="relative" ref={exampleDropdownRef}>
+                <button 
+                    type="button" 
+                    onClick={() => setIsExamplesOpen(!isExamplesOpen)}
+                    className="text-xs text-purple-300 hover:text-white flex items-center gap-1.5 transition-all font-bold bg-purple-950/60 border border-purple-500/40 px-3 py-1.5 rounded-xl shadow-[0_0_12px_rgba(168,85,247,0.25)]"
+                >
+                  <FlaskConical size={13} className="text-purple-400" />
+                  <span>Load Benchmark Preset ({SPLICING_EXAMPLES.length})</span>
+                  <ChevronDown size={12} className={`transition-transform duration-200 ${isExamplesOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isExamplesOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-84 bg-slate-950 border border-purple-500/40 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 z-50 overflow-hidden divide-y divide-slate-800">
+                       <div className="px-4 py-2.5 bg-slate-900 text-[10px] font-black text-purple-300 uppercase tracking-wider">
+                         Select Splicing Benchmark Variant
+                       </div>
+                       {SPLICING_EXAMPLES.map((ex, i) => (
+                         <button
+                           key={i}
+                           type="button"
+                           onClick={() => setPreset(ex)}
+                           className="w-full text-left px-4 py-3 text-xs text-slate-300 hover:bg-purple-950/40 hover:text-white transition-colors group"
+                         >
+                           <div className="font-bold text-white group-hover:text-purple-300 transition-colors flex items-center justify-between">
+                             <span>{ex.label}</span>
+                             <span className="text-[10px] font-mono text-slate-500">{ex.chromosome}:{ex.position}</span>
+                           </div>
+                           <div className="text-cyan-400 font-mono text-[11px] mt-0.5 font-bold">{ex.gene} : {ex.variant}</div>
+                           <div className="text-[10px] text-slate-400 mt-0.5">{ex.mechanism}</div>
+                         </button>
+                       ))}
+                    </div>
+                )}
+             </div>
            </div>
            
-           <div className="flex flex-col md:flex-row gap-2 mb-4">
+           <div className="flex flex-col md:flex-row gap-3">
              <div className="flex-1 w-full relative">
                <input 
                  id="splicing-gene-input" 
@@ -718,8 +846,8 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
                  value={input.gene} 
                  onChange={e => handleInputChange('gene', e.target.value)} 
                  disabled={loading} 
-                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:bg-slate-800 focus:shadow-[0_0_15px_rgba(124,58,237,0.3)] transition-all duration-200 font-mono placeholder:text-slate-600" 
-                 placeholder="Gene (e.g. SMN1)"
+                 className="w-full bg-slate-950 border border-slate-750 rounded-xl px-4 py-3 text-white focus:border-purple-400 focus:shadow-[0_0_16px_rgba(168,85,247,0.3)] transition-all duration-200 font-mono placeholder:text-slate-600 font-semibold text-sm" 
+                 placeholder="Gene (e.g. SMN1, CFTR, TP53)"
                  aria-label="Target Gene" 
                />
              </div>
@@ -730,56 +858,116 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
                  value={input.variant} 
                  onChange={e => handleInputChange('variant', e.target.value)} 
                  disabled={loading} 
-                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:bg-slate-800 focus:shadow-[0_0_15px_rgba(124,58,237,0.3)] transition-all duration-200 font-mono placeholder:text-slate-600" 
-                 placeholder="Variant (e.g. c.840+2T>G)"
+                 className="w-full bg-slate-950 border border-slate-750 rounded-xl px-4 py-3 text-white focus:border-purple-400 focus:shadow-[0_0_16px_rgba(168,85,247,0.3)] transition-all duration-200 font-mono placeholder:text-slate-600 font-semibold text-sm" 
+                 placeholder="cDNA Variant (e.g. c.840+2T>G, c.3849+10kbC>T)"
                  aria-label="Variant in cDNA notation" 
                />
              </div>
-             <button type="button" onClick={clearForm} className="px-3 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-400 hover:text-red-400 active:scale-95 transition-all md:w-auto w-full flex items-center justify-center" title="Clear Inputs" aria-label="Clear Inputs"><Eraser size={18} /></button>
+             <button type="button" onClick={clearForm} className="px-4 py-3 bg-slate-900 hover:bg-slate-800 border border-slate-750 rounded-xl text-slate-400 hover:text-rose-400 active:scale-95 transition-all md:w-auto w-full flex items-center justify-center" title="Clear Inputs" aria-label="Clear Inputs"><Eraser size={18} /></button>
            </div>
+
+           {/* Quick-Select Example Pills */}
+           <div className="flex items-center gap-1.5 flex-wrap">
+             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mr-1">Quick Presets:</span>
+             {SPLICING_EXAMPLES.map((ex, i) => (
+               <button
+                 key={i}
+                 type="button"
+                 onClick={() => setPreset(ex)}
+                 className={`text-[11px] px-3 py-1 rounded-lg border font-mono transition-all duration-150 ${
+                   input.gene.toUpperCase() === ex.gene.toUpperCase() && input.variant.toUpperCase() === ex.variant.toUpperCase()
+                     ? 'bg-purple-600 text-white font-bold border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.4)]'
+                     : 'bg-slate-950/80 border-slate-750 text-slate-300 hover:border-purple-400/60 hover:text-white'
+                 }`}
+               >
+                 {ex.gene} {ex.variant}
+               </button>
+             ))}
+           </div>
+
+           {mode === 'single' && (
+             <div className="bg-slate-950/80 p-4 rounded-xl border border-purple-500/25 space-y-3 shadow-inner">
+               <div className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                 <Dna size={14} className="text-purple-400" />
+                 <span>Genomic Coordinates Terminal (Direct SpliceAI Locus Query)</span>
+               </div>
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                 {[
+                   ['chromosome', 'Chromosome', 'e.g. 5, 7, 17, X'],
+                   ['position', 'Position', 'e.g. 70952001'],
+                   ['reference', 'REF Allele', 'e.g. T'],
+                   ['alternate', 'ALT Allele', 'e.g. G']
+                 ].map(([field, label, placeholder]) => (
+                   <label key={field} className="text-[10px] text-slate-400 uppercase font-extrabold tracking-wider">
+                     {label}
+                     <input
+                       value={(input as any)[field]}
+                       onChange={e => handleInputChange(field as any, e.target.value)}
+                       disabled={loading}
+                       placeholder={placeholder}
+                       aria-label={`SpliceAI ${label}`}
+                       className="mt-1 w-full bg-slate-900 border border-slate-750 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-650 focus:border-purple-400 focus:outline-none"
+                     />
+                   </label>
+                 ))}
+               </div>
+               <p className="text-[10px] text-slate-400 leading-tight">
+                 💡 <strong>Genomic Dispatch:</strong> Coordinates are automatically loaded from presets or can be entered directly as GRCh38 genomic coordinates for instant SpliceAI neural analysis.
+               </p>
+             </div>
+           )}
           
-          {error && <div className="bg-red-500/10 border border-red-500/30 text-red-100 rounded-lg p-4 mb-4 flex items-start gap-3 animate-in shake"><AlertCircle size={20} className="text-red-400 flex-shrink-0" /><div className="flex-1"><p className="font-bold text-sm">Error</p><p className="text-sm opacity-90 break-words">{error}</p></div><button type="button" onClick={()=>setError(null)} className="hover:text-white transition-colors" aria-label="Dismiss error"><X size={18}/></button></div>}
+          {error && <div className="bg-red-500/10 border border-red-500/30 text-red-100 rounded-xl p-4 flex items-start gap-3 animate-in shake"><AlertCircle size={20} className="text-red-400 flex-shrink-0" /><div className="flex-1"><p className="font-bold text-sm">Error</p><p className="text-sm opacity-90 break-words">{error}</p></div><button type="button" onClick={()=>setError(null)} className="hover:text-white transition-colors" aria-label="Dismiss error"><X size={18}/></button></div>}
 
           {batchProgress && mode === 'compare' && (
-             <div className="mb-4 bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
-                <Loader2 size={16} className="animate-spin text-indigo-400" />
-                <span className="text-indigo-200 text-sm font-mono">{batchProgress}</span>
+             <div className="bg-purple-950/40 border border-purple-500/40 p-3 rounded-xl flex items-center gap-3 animate-in fade-in">
+                <Loader2 size={16} className="animate-spin text-purple-400" />
+                <span className="text-purple-200 text-sm font-mono">{batchProgress}</span>
              </div>
           )}
 
-          <div className="flex justify-end mt-6 pt-4 border-t border-slate-700/50">
+          <div className="flex justify-end pt-4 border-t border-slate-800">
               <button 
                 type="submit" 
                 disabled={loading} 
-                className="bg-violet-600 hover:bg-violet-500 active:scale-95 hover:shadow-lg hover:shadow-violet-500/20 text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 flex items-center gap-2 min-w-[160px] justify-center"
+                className="mm-btn-tactical !bg-purple-600 hover:!bg-purple-500 text-white !py-3.5 !px-8 text-xs font-black rounded-xl shadow-[0_0_24px_rgba(168,85,247,0.45)] flex items-center gap-2 justify-center"
                 aria-label={loading ? "Analysis in progress" : "Analyze Splicing Variants"}
               >
-                {loading ? <><Loader2 className="animate-spin" size={18} /> Analyzing...</> : mode === 'compare' ? <><Layers size={18} /> Run Batch Comparison</> : <><GitMerge size={18} /> Analyze Splicing</>}
+                {loading ? <><Loader2 className="animate-spin" size={16} /> DECODING_SPLICE...</> : mode === 'compare' ? <><Layers size={16} /> RUN_BATCH_COMPARISON</> : <><GitMerge size={16} /> DECODE_SPLICING</>}
               </button>
           </div>
         </form>
       </div>
 
-      {/* SECTION 7.2: Empty State Landing */}
+      {/* Empty State — no analysis run yet */}
       {!result && !loading && mode === 'single' && (
-        <div className="flex flex-col items-center justify-center py-16 px-4 text-center animate-in fade-in duration-700 bg-slate-900/30 rounded-2xl border border-slate-800 border-dashed">
-            <div className="bg-violet-500/10 p-4 rounded-full mb-6 relative">
-                <GitMerge size={48} className="text-violet-500 relative z-10" />
-                <div className="absolute inset-0 bg-violet-500/20 blur-xl rounded-full"></div>
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">Ready to Decode Splicing Defects?</h3>
-            <p className="text-slate-400 max-w-lg mb-8">
-              Enter a genomic variant (c. notation) above or select an example from the dropdown to start your deep learning analysis. 
-              Our models predict transcript integrity and therapeutic suitability.
-            </p>
-            <div className="flex flex-wrap justify-center gap-4">
-                <button onClick={() => setPreset('SMN1', 'c.840+2T>G')} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-lg border border-slate-700 transition-all">
-                   <MousePointer2 size={14}/> Try SMA Example
-                </button>
-                <button onClick={() => setPreset('CFTR', 'c.3849+10kbC>T')} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-lg border border-slate-700 transition-all">
-                   <MousePointer2 size={14}/> Try CF Deep Intronic
-                </button>
-            </div>
+        <div className="mm-card-glowing mm-glow mm-glow--purple p-8 rounded-2xl relative overflow-hidden">
+          <DnaHelixBackdrop color="purple" opacity={0.20} motionVariant="fluid" seed="splice-empty" />
+          <EmptyState
+            icon={GitMerge}
+            headline="No splicing analysis yet"
+            subtext="Enter a gene symbol and variant notation above, or load an example to start your deep learning analysis."
+          />
+          <div className="flex flex-wrap justify-center gap-3 pb-4 relative z-10">
+            <button
+              onClick={() => setPreset(SPLICING_EXAMPLES[0])}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-lg border border-slate-750 hover:border-purple-400/60 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70 active:scale-[0.97]"
+            >
+              <MousePointer2 size={13} aria-hidden="true" /> Try SMA Example (SMN1)
+            </button>
+            <button
+              onClick={() => setPreset(SPLICING_EXAMPLES[1])}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-lg border border-slate-750 hover:border-purple-400/60 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70 active:scale-[0.97]"
+            >
+              <MousePointer2 size={13} aria-hidden="true" /> Try CF Deep Intronic (CFTR)
+            </button>
+            <button
+              onClick={() => setPreset(SPLICING_EXAMPLES[2])}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-lg border border-slate-750 hover:border-purple-400/60 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70 active:scale-[0.97]"
+            >
+              <MousePointer2 size={13} aria-hidden="true" /> Try LFS Donor Disruption (TP53)
+            </button>
+          </div>
         </div>
       )}
 
@@ -788,8 +976,8 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4" role="region" aria-label="Batch Analysis Results">
              {batchResults.map((res, i) => (
                  <div key={i} className="h-full">
-                     <div className="mb-2 font-bold text-slate-400 text-sm flex items-center gap-2">
-                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">#{i+1}</span>
+                     <div className="mb-2 font-bold text-slate-300 text-sm flex items-center gap-2">
+                        <span className="bg-slate-900 px-2.5 py-0.5 rounded border border-purple-500/30 text-purple-300 font-mono">#{i+1}</span>
                         {res.gene} {res.variantId.split('-')[1]}
                      </div>
                      <ClinicalInterpretationPanel data={res} loading={false} />
@@ -807,10 +995,11 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
                <SplicingVisualizer data={result} />
              </div>
              <div className="w-full md:w-80 flex flex-col gap-4">
-                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col gap-3 shadow-sm hover:border-slate-600 transition-colors">
-                   <h4 className="text-sm font-bold text-slate-300">Analysis Summary</h4>
-                   <RiskBadge severity={result.clinicalSeverity} score={getSeverityScore(result)} />
-                   <ConfidenceMeter confidence={result.confidence} />
+                <div className="mm-card-glowing mm-glow mm-glow--purple p-4 flex flex-col gap-3 shadow-xl relative overflow-hidden">
+                   <DnaHelixBackdrop color="purple" opacity={0.22} motionVariant="fluid" seed="splice-summary" />
+                   <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider relative z-10">Analysis Summary</h4>
+                   <div className="relative z-10"><RiskBadge severity={result.clinicalSeverity} score={getSeverityScore(result)} /></div>
+                   <div className="relative z-10"><ConfidenceMeter confidence={result.confidence} /></div>
                 </div>
                 <div className="flex-1">
                    <SpliceSiteDiagram variant={result.variant} gene={result.gene} severity={result.clinicalSeverity} />
@@ -818,23 +1007,27 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
              </div>
           </div>
 
-          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-sm">
-             <div className="flex justify-between items-center mb-4">
-               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                 <Box size={20} className="text-scientific-blue" />
-                 Predicted Protein Structure Impact
-               </h3>
+          <div className="mm-card-glowing mm-glow mm-glow--blue p-6 relative overflow-hidden group shadow-xl">
+             <DnaHelixBackdrop color="blue" opacity={0.22} motionVariant="pulse" seed="splice-protein" />
+             <div className="flex justify-between items-center mb-4 relative z-10">
+               <div className="flex items-center gap-2.5">
+                 <div className="mm-section-accent mm-section-accent--blue" />
+                 <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                   <Box size={16} className="text-blue-400" />
+                   Predicted Protein Structure Impact
+                 </h3>
+               </div>
                <div className="flex items-center gap-3">
                   <span className="text-xs text-slate-400">
-                    Confidence (pLDDT): <strong className="text-white">{structureConfidence.toFixed(1)}</strong>
+                    Confidence (pLDDT): <strong className="text-white font-mono">{structureConfidence.toFixed(1)}</strong>
                   </span>
-                  <span className="text-xs bg-slate-900 border border-slate-700 px-2 py-1 rounded text-slate-400">
+                  <span className="text-[10px] font-bold bg-blue-950/60 border border-blue-500/40 px-2.5 py-0.5 rounded text-blue-300 font-mono">
                       AlphaFold 3
                   </span>
                </div>
              </div>
-             <div className="grid md:grid-cols-2 gap-6">
-                <div className="h-80 border border-slate-700 rounded-xl overflow-hidden relative">
+             <div className="grid md:grid-cols-2 gap-6 relative z-10">
+                <div className="h-80 border border-blue-500/30 rounded-xl overflow-hidden relative">
                    <ProteinStructureViewer 
                       pdbData={structurePdb} 
                       label={result.gene}
@@ -843,23 +1036,23 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
                    />
                 </div>
                 <div className="flex flex-col justify-center space-y-4">
-                   <div className="bg-slate-900 p-4 rounded-lg border border-slate-700">
-                      <div className="text-xs text-slate-500 uppercase font-bold mb-1 flex items-center">
+                   <div className="bg-slate-950/90 p-4 rounded-xl border border-blue-500/25">
+                      <div className="text-xs text-slate-400 uppercase font-extrabold mb-1 flex items-center">
                         Impact Description
                         <MetricInfo title="Protein Impact" content="Estimated effect on the amino acid sequence and resulting 3D tertiary structure." />
                       </div>
-                      <p className="text-sm text-slate-200">{result.proteinImpact.description}</p>
+                      <p className="text-sm text-slate-200 leading-relaxed">{result.proteinImpact.description}</p>
                    </div>
                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-slate-900 p-4 rounded-lg border border-slate-700">
-                         <div className="text-xs text-slate-500 uppercase font-bold mb-1">Protein Loss</div>
-                         <div className={`text-xl font-bold font-mono ${result.proteinImpact.truncationPercentage > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                      <div className="bg-slate-950/90 p-4 rounded-xl border border-blue-500/25">
+                         <div className="text-[10px] text-slate-400 uppercase font-extrabold mb-1">Protein Loss</div>
+                         <div className={`text-2xl font-black font-mono ${result.proteinImpact.truncationPercentage > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                            {result.proteinImpact.truncationPercentage}%
                          </div>
                       </div>
-                      <div className="bg-slate-900 p-4 rounded-lg border border-slate-700">
-                         <div className="text-xs text-slate-500 uppercase font-bold mb-1">Frameshift</div>
-                         <div className={`text-xl font-bold font-mono ${result.proteinImpact.frameshift ? 'text-red-400' : 'text-emerald-400'}`}>
+                      <div className="bg-slate-950/90 p-4 rounded-xl border border-blue-500/25">
+                         <div className="text-[10px] text-slate-400 uppercase font-extrabold mb-1">Frameshift</div>
+                         <div className={`text-2xl font-black font-mono ${result.proteinImpact.frameshift ? 'text-rose-400' : 'text-emerald-400'}`}>
                            {result.proteinImpact.frameshift ? "YES" : "NO"}
                          </div>
                       </div>
@@ -874,35 +1067,114 @@ Gene Therapy: ${result.therapySuitability.geneTherapy.suitable ? 'Suitable' : 'N
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1 space-y-4">
-              <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 h-full hover:border-slate-600 transition-colors shadow-sm">
-                <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><Activity size={20} className="text-purple-400"/> Splicing Impact Metrics</h3>
-                <div className="space-y-6">
+              <div className="mm-card-glowing mm-glow mm-glow--purple p-6 h-full relative overflow-hidden group shadow-xl">
+                <DnaHelixBackdrop color="purple" opacity={0.22} speed={0.8} motionVariant="fluid" seed="splice-metrics" />
+                <div className="flex items-center gap-2.5 mb-6 relative z-10">
+                  <div className="mm-section-accent mm-section-accent--purple" />
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <Activity size={16} className="text-purple-400"/> Splicing Impact Metrics
+                  </h3>
+                </div>
+                <div className="space-y-5 relative z-10">
+                  {/* SpliceAI Deep Neural Delta Scores */}
+                  {!configService.getFeatureFlags().enableSpliceAI ? (
+                    <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                      <div className="flex items-center gap-2.5">
+                        <GitMerge size={16} className="text-slate-500 shrink-0" />
+                        <div>
+                          <span className="text-slate-300 font-semibold block">SpliceAI Neural Delta Matrix Disabled</span>
+                          <span className="text-[11px] text-slate-500 block">Enable in Settings to compute deep learning splice disruption metrics.</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono italic">Module Off</span>
+                    </div>
+                  ) : result.spliceAiScores ? (
+                    <div className="bg-slate-950/90 p-4 rounded-xl border border-purple-500/40 space-y-3 shadow-inner">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-extrabold text-purple-300 uppercase tracking-wider">SpliceAI Neural Delta</span>
+                          <MetricInfo title="SpliceAI Delta Scores" content="Illumina 32-layer deep residual network predicting delta probabilities (0 to 1) for splice site loss or gain." />
+                        </div>
+                        <span className={`text-[9px] font-mono px-2 py-0.5 rounded border font-extrabold uppercase flex items-center gap-1 ${
+                          result.spliceAiSource === 'SIMULATION' ? 'text-amber-300 border-amber-400/40 bg-amber-950/40' : result.spliceAiSource === 'CACHE' ? 'text-cyan-300 border-cyan-400/40 bg-cyan-950/40' : 'text-emerald-300 border-emerald-400/40 bg-emerald-950/40'
+                        }`}>
+                          <span className={`mm-status-dot ${result.spliceAiSource === 'SIMULATION' ? 'text-amber-400' : result.spliceAiSource === 'CACHE' ? 'text-cyan-400' : 'text-emerald-400'}`} />
+                          {result.spliceAiSource || 'API'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-750">
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Donor Loss (ΔDL)</div>
+                          <div className={`font-mono text-base font-black ${result.spliceAiScores.deltaDonorLoss >= 0.5 ? 'text-rose-400' : 'text-slate-300'}`}>
+                            {result.spliceAiScores.deltaDonorLoss.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-750">
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Donor Gain (ΔDG)</div>
+                          <div className={`font-mono text-base font-black ${result.spliceAiScores.deltaDonorGain >= 0.5 ? 'text-rose-400' : 'text-slate-300'}`}>
+                            {result.spliceAiScores.deltaDonorGain.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-750">
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Acceptor Loss (ΔAL)</div>
+                          <div className={`font-mono text-base font-black ${result.spliceAiScores.deltaAcceptorLoss >= 0.5 ? 'text-rose-400' : 'text-slate-300'}`}>
+                            {result.spliceAiScores.deltaAcceptorLoss.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-750">
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Acceptor Gain (ΔAG)</div>
+                          <div className={`font-mono text-base font-black ${result.spliceAiScores.deltaAcceptorGain >= 0.5 ? 'text-rose-400' : 'text-slate-300'}`}>
+                            {result.spliceAiScores.deltaAcceptorGain.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {result.spliceAiScores.clinicalInterpretation && (
+                        <p className="text-[11px] text-purple-200 leading-tight">
+                          {result.spliceAiScores.clinicalInterpretation}
+                        </p>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
+                        <span><strong className="text-amber-300">Research Use Only:</strong> Splicing predictions require experimental validation.</span>
+                        <span className="font-mono text-slate-500">Jaganathan et al., Cell (2019)</span>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-900 p-3 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
-                      <div className="text-xs text-slate-500 mb-1 uppercase tracking-wide flex items-center">
+                    <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-750">
+                      <div className="text-[10px] text-slate-400 mb-1 uppercase tracking-wide font-extrabold flex items-center">
                         mRNA Stability
                         <MetricInfo title="mRNA Stability" content="Percentage change in transcript half-life due to NMD or structural alteration." />
                       </div>
-                      <div className={`font-mono font-bold text-lg ${result.mRNAImpact.stabilityChange < -20 ? 'text-red-400' : 'text-slate-200'}`}>
+                      <div className={`font-mono font-black text-lg ${result.mRNAImpact.stabilityChange < -20 ? 'text-rose-400' : 'text-slate-200'}`}>
                         {result.mRNAImpact.stabilityChange > 0 ? '+' : ''}{result.mRNAImpact.stabilityChange}%
                       </div>
                     </div>
-                    <div className="bg-slate-900 p-3 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
-                      <div className="text-xs text-slate-500 mb-1 uppercase tracking-wide">Protein Status</div>
+                    <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-750">
+                      <div className="text-[10px] text-slate-400 mb-1 uppercase tracking-wide font-extrabold">Protein Status</div>
                       <div className="font-mono font-bold text-slate-200 text-xs truncate leading-8" title={result.proteinImpact.description}>
                         {result.proteinImpact.frameshift ? 'Frameshift' : 'In-frame'}
                       </div>
                     </div>
                   </div>
-                  <div className="text-sm text-slate-300 leading-relaxed italic border-l-2 border-slate-600 pl-3">"{result.aiInterpretation}"</div>
+                  <div className="text-xs text-slate-300 leading-relaxed italic border-l-2 border-purple-500 pl-3">"{result.aiInterpretation}"</div>
                 </div>
               </div>
             </div>
 
             <div className="lg:col-span-2">
-              <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 h-full flex flex-col hover:border-slate-600 transition-colors shadow-sm">
-                <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><Pill size={20} className="text-green-400"/> Clinical Insights & Therapies</h3>
-                <div className="flex flex-col md:flex-row gap-6 h-full">
+              <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 h-full flex flex-col relative overflow-hidden group shadow-xl">
+                <DnaHelixBackdrop color="emerald" opacity={0.22} motionVariant="rhythmic" seed="splice-clinical" />
+                <div className="flex items-center gap-2.5 mb-6 relative z-10">
+                  <div className="mm-section-accent mm-section-accent--emerald" />
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <Pill size={16} className="text-emerald-400"/> Clinical Insights & Therapies
+                  </h3>
+                </div>
+                <div className="flex flex-col md:flex-row gap-6 h-full relative z-10">
                    <div className="flex-1 min-w-[300px]">
                       <ClinicalInterpretationPanel data={clinicalAnalysis} loading={clinicalLoading} />
                    </div>

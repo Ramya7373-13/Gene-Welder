@@ -32,6 +32,7 @@ export interface AnalysisResponse {
   predictions: PredictionData;
   cached: boolean;
   timestamp: number;
+  source?: 'API' | 'CACHE' | 'SIMULATION';
   // PDB Structure Data
   pdbData?: {
     native: string; // PDB string

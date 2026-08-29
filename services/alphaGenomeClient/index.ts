@@ -1,17 +1,5 @@
 import { SplicingAnalysisRequest, SplicingAnalysisResult, ExonInfo } from '../../types/splicing';
 
-// === CONFIGURATION ===
-const HARDCODED_API_KEY = ""; 
-
-const getApiKey = () => {
-  if (HARDCODED_API_KEY) return HARDCODED_API_KEY;
-
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('GEMINI_API_KEY') || process.env.ALPHAFOLD_API_KEY || '';
-  }
-  return process.env.ALPHAFOLD_API_KEY || '';
-};
-
 export class AlphaGenomeClient {
   
   /**

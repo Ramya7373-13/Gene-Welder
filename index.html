@@ -6,7 +6,7 @@
     <title>MutationMechanic | AI Protein Engineering</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.4/3Dmol-min.js"></script>
-    <script>
+<script>
       // Note: importmap removed for Safari iOS < 16.4 compatibility
       tailwind.config = {
         theme: {
@@ -20,11 +20,35 @@
                 DEFAULT: 'var(--color-primary)', 
                 hover: 'var(--color-primary-hover)', 
               },
+              secondary: {
+                DEFAULT: 'var(--color-secondary)',
+                hover: 'var(--color-secondary-hover)',
+              },
+              accent: {
+                DEFAULT: 'var(--color-accent)',
+                hover: 'var(--color-accent-hover)',
+              },
+              background: 'var(--color-background)',
+              foreground: 'var(--color-foreground)',
+              card: 'var(--color-card)',
+              'card-foreground': 'var(--color-card-foreground)',
+              muted: 'var(--color-muted)',
+              'muted-foreground': 'var(--color-muted-foreground)',
+              border: 'var(--color-border)',
+              destructive: 'var(--color-destructive)',
+              'on-destructive': 'var(--color-on-destructive)',
+              ring: 'var(--color-ring)',
               scientific: {
                 green: '#10b981',
                 red: '#ef4444',
                 blue: '#06b6d4',
               }
+            },
+            borderRadius: {
+              lg: '0.5rem',
+              xl: '0.75rem',
+              '2xl': '1rem',
+              '3xl': '1.5rem',
             },
             fontFamily: {
               mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', "Liberation Mono", "Courier New", 'monospace'],
@@ -44,12 +68,27 @@
     </script>
     <style>
       :root {
-        --color-primary: #6366f1; /* Indigo 500 */
-        --color-primary-hover: #4f46e5; /* Indigo 600 */
+        --color-primary: #0891B2;
+        --color-primary-hover: #0781A0;
+        --color-secondary: #22D3EE;
+        --color-secondary-hover: #1EC3DE;
+        --color-accent: #059669;
+        --color-accent-hover: #047857;
+        --color-background: #ECFEFF;
+        --color-foreground: #164E63;
+        --color-card: #FFFFFF;
+        --color-card-foreground: #164E63;
+        --color-muted: #E8F1F6;
+        --color-muted-foreground: #475569;
+        --color-border: #A5F3FC;
+        --color-destructive: #DC2626;
+        --color-on-destructive: #FFFFFF;
+        --color-ring: #0891B2;
       }
       body {
-        background-color: #0f172a; /* Slate 900 */
-        color: #f8fafc; /* Slate 50 */
+        background-color: var(--color-background);
+        color: var(--color-foreground);
+        font-family: 'Atkinson Hyperlegible', sans-serif;
       }
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
@@ -57,14 +96,14 @@
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #1e293b; 
+        background: var(--color-muted); 
       }
       ::-webkit-scrollbar-thumb {
-        background: #475569; 
+        background: var(--color-muted-foreground); 
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
+        background: var(--color-foreground); 
       }
     </style>
   <link rel="stylesheet" href="/index.css">

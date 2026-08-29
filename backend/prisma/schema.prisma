@@ -52,6 +52,16 @@ model Analysis {
   rmsd                  Float?
   confidence            Int?
   
+  // AlphaFold structural metrics (mirrors Variant model for standalone analyses)
+  plddt_per_residue     Json?    // Per-residue pLDDT scores
+  wildtype_structure_path String? // Path to wild-type PDB file
+  mutant_structure_path    String? // Path to mutant PDB file
+  wildtype_chain         String?  // Chain letter(s) for wild-type
+  mutant_chain          String?  // Chain letter(s) for mutant
+  domains_affected      Json?    // Array of affected domain names
+  alphaFold_version     String?  // AlphaFold model version
+  structure_source      String?  // Source: "alphafold_db", "alphafold3", "local"
+  
   // Clinical interpretation
   pathogenicity         String?             // "BENIGN", "VUS", "PATHOGENIC"
   pathogenicityScore    Int?
@@ -248,6 +258,18 @@ model Variant {
   riskAssessments RiskAssessment[] // Related risk assessments
   familyRisks    FamilyRisk[] // Related family risks
   annotations    Json?        // ClinVar, OMIM, dbNSFP
+
+  // AlphaFold structural metrics
+  plddt_avg           Float?   // Average pLDDT confidence score (0-100)
+  plddt_per_residue   Json?    // Per-residue pLDDT scores as array: [82.5, 78.3, ...]
+  rmsd_to_wildtype    Float?   // RMSD between wild-type and mutant structures (Angstroms)
+  wildtype_structure_path String?  // Path to wild-type PDB file
+  mutant_structure_path   String?  // Path to mutant PDB file
+  wildtype_chain      String?  // Chain letter(s) for wild-type structure (e.g., "A")
+  mutant_chain        String?  // Chain letter(s) for mutant structure (e.g., "A")
+  domains_affected    Json?   // Array of affected domain names: ["SH2 domain", "Kinase domain"]
+  alphaFold_version   String?  // AlphaFold model version (e.g., "v3")
+  structure_source    String?  // Source: "alphafold_db", "alphafold3", "local"
 
   @@unique([patientId, gene, hgvs_c])
   @@index([gene])

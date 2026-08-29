@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/Tabs';
 import VariantExplainerTab from './components/VariantExplainerTab';
 import CompensatoryDesignTab from './components/CompensatoryDesignTab';
@@ -10,28 +11,37 @@ import HistoryTable from './components/Analytics/HistoryTable';
 import SettingsModal from './components/SettingsModal';
 import ShortcutsModal from './components/ShortcutsModal';
 import ToastNotification, { ToastType } from './components/ToastNotification';
+import LandingPage from './components/LandingPage';
 import { DISEASE_VARIANTS } from './constants';
 import { VariantInfo } from './types';
 import { historyService, HistoryRecord } from './services/historyService';
 import logger from './utils/logger';
-import { BarChart3, Clock } from 'lucide-react';
+import { BarChart3, Clock, BookOpen, Zap, Microscope, Dna, BarChart2 } from 'lucide-react';
 
 // Theme Definitions
 export const THEMES = [
-  { id: 'purple', name: 'Nebula Purple', primary: '#6366f1', hover: '#4f46e5' },
-  { id: 'blue', name: 'Quantum Blue', primary: '#3b82f6', hover: '#2563eb' },
-  { id: 'green', name: 'Bio Emerald', primary: '#10b981', hover: '#059669' },
-  { id: 'red', name: 'Alert Red', primary: '#ef4444', hover: '#dc2626' },
-  { id: 'orange', name: 'Amber Warning', primary: '#f59e0b', hover: '#d97706' },
-  { id: 'cyan', name: 'Cyber Cyan', primary: '#06b6d4', hover: '#0891b2' },
-  { id: 'pink', name: 'Neon Pink', primary: '#ec4899', hover: '#db2777' },
-  { id: 'violet', name: 'Deep Violet', primary: '#8b5cf6', hover: '#7c3aed' },
-  { id: 'yellow', name: 'Solar Yellow', primary: '#eab308', hover: '#ca8a04' },
-  { id: 'slate', name: 'Steel Slate', primary: '#64748b', hover: '#475569' },
+  { id: 'purple', name: 'Lavender Mist', primary: '#C5B4E9', hover: '#B598D9' },
+  { id: 'blue', name: 'Sky Blue', primary: '#81D4FA', hover: '#6EC6EA' },
+  { id: 'green', name: 'Mint Green', primary: '#80DEEA', hover: '#6ED0D0' },
+  { id: 'red', name: 'Soft Red', primary: '#F8BBD0', hover: '#F48FB1' },
+  { id: 'orange', name: 'Peach', primary: '#FFCCBC', hover: '#FFAB91' },
+  { id: 'cyan', name: 'Ice Blue', primary: '#B2EBF2', hover: '#99D9EA' },
+  { id: 'pink', name: 'Rose Quartz', primary: '#F8BBD0', hover: '#F48FB1' },
+  { id: 'violet', name: 'Periwinkle', primary: '#D1C4E9', hover: '#B39DDB' },
+  { id: 'yellow', name: 'Cream', primary: '#FFF9C4', hover: '#FFF176' },
+  { id: 'slate', name: 'Gray Blue', primary: '#B0BEC5', hover: '#90A4AE' },
 ];
 
-function App() {
-  const [activeTab, setActiveTab] = useState('explainer');
+const validTabs = ['explainer', 'design', 'tracer', 'splicing', 'analytics'];
+
+function getInitialTab() {
+  const tab = new URLSearchParams(window.location.search).get('tab');
+  return tab && validTabs.includes(tab) ? tab : 'explainer';
+}
+
+function WorkspaceApp() {
+  const [activeTab, setActiveTab] = useState(getInitialTab);
+  const [activeSource, setActiveSource] = useState<'API' | 'CACHE' | 'SIMULATION' | null>(null);
   const [variants, setVariants] = useState<VariantInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -77,7 +87,7 @@ function App() {
   };
 
   const handleClearHistory = async () => {
-    if (window.confirm("Permanent Action: This will wipe all historical analysis data. Proceed?")) {
+    if (true) {
       await historyService.clearHistory();
       fetchHistory();
       setToast({ message: "History cleared successfully", type: 'success' });
@@ -137,27 +147,38 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col font-sans transition-colors duration-500">
-      <Header onOpenSettings={() => setIsSettingsOpen(true)} />
+      <Header onOpenSettings={() => setIsSettingsOpen(true)} source={activeSource} />
 
       <main className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-8">
           <div className="flex justify-center">
-            <TabsList className="grid w-full md:w-[90%] grid-cols-5">
-              <TabsTrigger value="explainer">📖 Explainer</TabsTrigger>
-              <TabsTrigger value="design">⚡ Design</TabsTrigger>
-              <TabsTrigger value="tracer">🔬 Tracer</TabsTrigger>
-              <TabsTrigger value="splicing">🧬 Splicing</TabsTrigger>
-              <TabsTrigger value="analytics" className="flex items-center gap-2">
-                <BarChart3 size={14} /> Analytics
+            <TabsList
+              aria-label="Main navigation"
+              className="grid w-full md:w-[90%] grid-cols-5"
+            >
+              <TabsTrigger value="explainer" icon={<BookOpen size={14} aria-hidden="true" />}>
+                Explainer
+              </TabsTrigger>
+              <TabsTrigger value="design" icon={<Zap size={14} aria-hidden="true" />}>
+                Design
+              </TabsTrigger>
+              <TabsTrigger value="tracer" icon={<Microscope size={14} aria-hidden="true" />}>
+                Tracer
+              </TabsTrigger>
+              <TabsTrigger value="splicing" icon={<Dna size={14} aria-hidden="true" />}>
+                Splicing
+              </TabsTrigger>
+              <TabsTrigger value="analytics" icon={<BarChart3 size={14} aria-hidden="true" />}>
+                Analytics
               </TabsTrigger>
             </TabsList>
           </div>
 
           <TabsContent value="explainer">
-            <VariantExplainerTab variants={variants} externalVariantId={explainerVariant} />
+            <VariantExplainerTab variants={variants} externalVariantId={explainerVariant} onSourceChange={setActiveSource} />
           </TabsContent>
           <TabsContent value="design">
-            <CompensatoryDesignTab />
+            <CompensatoryDesignTab onSourceChange={setActiveSource} />
           </TabsContent>
           <TabsContent value="tracer">
             <DiseaseTracerTab />
@@ -205,10 +226,33 @@ function App() {
       </main>
 
       {toast && <ToastNotification message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} currentTheme={currentTheme} onThemeChange={applyTheme} />
+      <Footer />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentTheme={currentTheme}
+        onThemeChange={applyTheme}
+        onConfigChange={() => {
+          const isOffline = configService.isForcedOffline();
+          setToast({
+            message: isOffline
+              ? 'Offline Demo Mode enabled (Simulation mode active)'
+              : 'Live API Mode enabled (Live models active)',
+            type: isOffline ? 'info' : 'success'
+          });
+        }}
+      />
       <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
     </div>
   );
+}
+
+function App() {
+  if (window.location.pathname === '/') {
+    return <LandingPage />;
+  }
+
+  return <WorkspaceApp />;
 }
 
 export default App;

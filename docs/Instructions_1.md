@@ -1,0 +1,6 @@
+The full-stack application tabs load beautifully, but our screenshots reveal two prominent visual layout bugs that we need to hotfix immediately:
+
+1. Missing AlphaFold Viewport Data: The `ALPHAFOLD 3 STRUCTURE` box is currently stuck displaying `No structure data loaded`. This means the `3Dmol.js` canvas engine is failing to parse our relative string paths (`./storage/SMN1_wildtype.pdb`). Please update `components/ProteinStructureViewer.tsx` to ensure that if a local `.pdb` path is returned from our Express backend, the frontend triggers a clean file-stream fetch or falls back to pulling the PDB geometry data dynamically using the official Uniprot/AlphaFold DB URL string matching our target gene.
+2. Badge Content Overflow: In the variant header row, the `AlphaMissense` pathogenicity score banner (`0.877`) is overflowing its container boundaries and clipping text contents. Please inspect that layout card element's CSS block. Change its width parameters to use flexible layout tokens like `width: fit-content` or add `flex-shrink: 0` alongside clean padding markers (`padding: 0.5rem 1rem`) so the data scores display elegantly without text truncation.
+
+Let me know once you rewrite these frontend files so I can check out our completely responsive 3D molecule views!

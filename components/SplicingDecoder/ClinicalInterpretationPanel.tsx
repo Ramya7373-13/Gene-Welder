@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MedGemmaAnalysis } from '../../types/medgemma';
 import { BrainCircuit, Activity, Pill, BookOpen, CheckCircle2, HelpCircle, AlertCircle, Clock, Link as LinkIcon, Thermometer, FlaskConical, Stethoscope, FileWarning, ClipboardList, Globe, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import DnaHelixBackdrop from '../DnaHelixBackdrop';
 
 interface ClinicalInterpretationPanelProps {
   data: MedGemmaAnalysis | null;
@@ -20,14 +21,14 @@ const ClinicalInterpretationPanel: React.FC<ClinicalInterpretationPanelProps> = 
   // SECTION 3.2: Loading State
   if (loading) {
     return (
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 h-full flex flex-col items-center justify-center space-y-4 animate-pulse">
+      <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 h-full flex flex-col items-center justify-center space-y-4 animate-pulse">
          <div className="relative">
-            <div className="absolute inset-0 bg-scientific-blue/20 rounded-full blur-xl animate-pulse"></div>
-            <BrainCircuit size={48} className="text-scientific-blue relative z-10 animate-bounce" />
+            <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse"></div>
+            <BrainCircuit size={48} className="text-emerald-400 relative z-10 animate-bounce" />
          </div>
          <div className="text-center">
-            <h3 className="text-lg font-bold text-white mb-1">MedGemma analyzing clinical significance...</h3>
-            <p className="text-slate-600 text-xs mt-2 font-mono">~3-5 seconds</p>
+            <h3 className="text-sm font-bold text-white mb-1">Gemini analyzing clinical significance...</h3>
+            <p className="text-slate-400 text-xs mt-2 font-mono">~3-5 seconds</p>
          </div>
       </div>
     );
@@ -35,17 +36,17 @@ const ClinicalInterpretationPanel: React.FC<ClinicalInterpretationPanelProps> = 
 
   if (!data) {
     return (
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 h-full flex flex-col items-center justify-center text-center">
-         <AlertCircle size={32} className="text-slate-600 mb-2" />
-         <p className="text-slate-400 text-sm">No clinical interpretation data available.</p>
+      <div className="mm-card-glowing mm-glow mm-glow--emerald p-6 h-full flex flex-col items-center justify-center text-center">
+         <AlertCircle size={32} className="text-slate-500 mb-2" />
+         <p className="text-slate-400 text-xs">No clinical interpretation data available.</p>
       </div>
     );
   }
 
   const getPathogenicityColor = (p: string) => {
-    if (p.includes('Pathogenic')) return 'text-red-400 border-red-500/50 bg-red-500/10';
-    if (p.includes('Benign')) return 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10';
-    return 'text-yellow-400 border-yellow-500/50 bg-yellow-500/10';
+    if (p.includes('Pathogenic')) return 'text-rose-300 border-rose-500/50 bg-rose-950/40 shadow-[0_0_8px_rgba(244,63,94,0.3)]';
+    if (p.includes('Benign')) return 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40 shadow-[0_0_8px_rgba(16,185,129,0.3)]';
+    return 'text-amber-300 border-amber-500/50 bg-amber-950/40';
   };
 
   const getPathogenicityIcon = (p: string) => {
@@ -60,16 +61,21 @@ const ClinicalInterpretationPanel: React.FC<ClinicalInterpretationPanelProps> = 
   const isLowConfidence = data.confidenceScore < 60;
 
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg animate-in fade-in slide-in-from-right-4 duration-500 h-full flex flex-col">
+    <div className="mm-card-glowing mm-glow mm-glow--emerald overflow-hidden shadow-xl animate-in fade-in slide-in-from-right-4 duration-500 h-full flex flex-col relative group">
+      <DnaHelixBackdrop color="emerald" opacity={0.22} speed={0.8} motionVariant="rhythmic" seed="clinical-interp" />
       {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-900/50 to-slate-900 border-b border-slate-700 p-4 flex justify-between items-center">
+      <div className="bg-slate-950/90 border-b border-emerald-500/30 p-4 flex justify-between items-center relative z-10">
         <div className="flex items-center gap-2">
-           <BrainCircuit className="text-scientific-blue" size={20} />
-           <h3 className="font-bold text-white">Clinical Interpretation</h3>
+           <BrainCircuit className="text-emerald-400" size={18} />
+           <h3 className="font-bold text-white text-xs uppercase tracking-wider">Clinical Reasoning</h3>
+           <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded border flex items-center gap-1 ${data.source === 'SIMULATION' ? 'text-amber-300 bg-amber-950/50 border-amber-500/40' : 'text-emerald-300 bg-emerald-950/50 border-emerald-500/40'}`}>
+              <span className={`mm-status-dot ${data.source === 'SIMULATION' ? 'text-amber-400' : 'text-emerald-400'}`} />
+              {data.source || 'SIMULATION'}
+           </span>
         </div>
         <div className="flex items-center gap-2">
-           <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded border border-indigo-500/30 font-mono">
-             MedGemma-2B
+           <span className="text-[10px] bg-emerald-950/60 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40 font-mono font-bold">
+             Gemini 3 Flash
            </span>
         </div>
       </div>

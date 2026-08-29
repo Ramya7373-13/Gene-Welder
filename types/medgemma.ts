@@ -41,5 +41,6 @@ export interface MedGemmaAnalysis {
   
   // Metadata
   citations: string[];
-  isCached?: boolean;
+    isCached?: boolean;
+    source?: 'API' | 'CACHE' | 'SIMULATION';
 }

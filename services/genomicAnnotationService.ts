@@ -218,38 +218,9 @@ export const genomicAnnotationService = {
   
   // PRIMARY: AlphaGenome API
   async fetchAlphaGenomeData(gene: string, variant: string): Promise<GenomicContext | null> {
-    const API_URL = process.env.REACT_APP_ALPHAGENOME_API_URL;
-    const API_KEY = process.env.REACT_APP_ALPHAGENOME_API_KEY;
-
-    if (!API_URL || !API_KEY) return null; // Not configured
-
-    // Section 1.3: Network Timeout Implementation
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-
-    try {
-        // Conceptually maps to GET /variants/{gene}/{position}/{ref}/{alt} as required in Section 1.2
-        const response = await fetch(`${API_URL}/lookup?gene=${gene}&variant=${variant}`, {
-            headers: { 'Authorization': `Bearer ${API_KEY}` },
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-            const data = await response.json();
-            return { ...data, metadata: DEFAULT_METADATA };
-        }
-        return null;
-    } catch (e: any) {
-        clearTimeout(timeoutId);
-        if (e.name === 'AbortError') {
-            console.warn("AlphaGenome API Timeout (15s exceeded)");
-        } else {
-            console.warn("AlphaGenome API Unreachable", e);
-        }
-        return null;
-    }
+    // AlphaGenome is intentionally simulation-only until its official gRPC
+    // service is bridged through the backend.
+    return null;
   },
 
   // FALLBACK 1: NCBI (Simulated for Demo)

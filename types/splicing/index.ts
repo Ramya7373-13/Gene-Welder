@@ -56,6 +56,19 @@ export interface SplicingAnalysisResult {
   clinicalSeverity: 'BENIGN' | 'UNCERTAIN' | 'MODERATE' | 'SEVERE';
   confidence: number; // 0-100
   aiInterpretation: string;
+  spliceAiScores?: {
+    allele: string;
+    symbol: string;
+    deltaAcceptorGain: number;
+    deltaAcceptorLoss: number;
+    deltaDonorGain: number;
+    deltaDonorLoss: number;
+    positionAcceptorGain: number;
+    positionAcceptorLoss: number;
+    positionDonorGain: number;
+    positionDonorLoss: number;
+  };
+  spliceAiSource?: 'API' | 'CACHE' | 'SIMULATION';
 
   // Therapeutics
   therapySuitability: {

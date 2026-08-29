@@ -4,10 +4,10 @@ import StructureCharts from './StructureCharts';
 import AnalysisPanel from './AnalysisPanel';
 import { AnalysisResponse } from '../types';
 import { MOCK_ANALYSIS } from '../constants';
-import { AlertCircle, RefreshCw, ServerCrash, Save, Book, ChevronRight, Play, Download, Upload, Trash2, Edit, Filter, ListFilter, X, Plus } from 'lucide-react';
+import { AlertCircle, RefreshCw, ServerCrash, Save, Book, ChevronRight, Play, Download, Upload, Trash2, Edit, Filter, ListFilter, X, Plus, FlaskConical } from 'lucide-react';
+import EmptyState from './EmptyState';
 import { presetStorage, PresetSchema } from '../utils/presetStorage';
-
-const API_URL = 'http://localhost:3001/api/analyze';
+import DnaHelixBackdrop, { DnaThemeColor, MotionVariant } from './DnaHelixBackdrop';
 
 export interface BenchmarkPreset {
   id: string;
@@ -25,7 +25,11 @@ const DEFAULT_PRESETS: BenchmarkPreset[] = [
   { id: 'cftr-folding', title: 'CFTR F508del', hgvs: 'CFTR c.1521_1523delCTT', type: 'folding', description: 'p.Phe508del', expectedImpact: 'Misfolding & degradation' }
 ];
 
-const CompensatoryDesignTab: React.FC = () => {
+interface CompensatoryDesignTabProps {
+  onSourceChange?: (source: 'API' | 'CACHE' | 'SIMULATION') => void;
+}
+
+const CompensatoryDesignTab: React.FC<CompensatoryDesignTabProps> = ({ onSourceChange }) => {
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -145,20 +149,32 @@ const CompensatoryDesignTab: React.FC = () => {
       if (dataCache.current[id]) {
         data = dataCache.current[id];
       } else {
-        await new Promise(resolve => setTimeout(resolve, 800));
-        let mockKey = id;
-        if (id.includes('F508del')) mockKey = 'CFTR-F508del';
-        if (id.includes('TP53')) mockKey = 'TP53-R248Q'; 
-        data = MOCK_ANALYSIS[mockKey] || MOCK_ANALYSIS[Object.keys(MOCK_ANALYSIS)[0]];
+        const backendUrl = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const response = await fetch(`${backendUrl}/api/ai/variant-analysis`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gene: id.split(/\s+/)[0], variant: id, mode: 'design' })
+        });
+        if (!response.ok) throw new Error(`Gemini backend returned ${response.status}`);
+        data = await response.json() as AnalysisResponse;
+        onSourceChange?.(data.source || 'API');
         dataCache.current[id] = data;
       }
+      onSourceChange?.(data.source || 'SIMULATION');
       setLoading(false);
       simulateStreaming(data);
     } catch (err: any) {
+      let mockKey = id;
+      if (id.includes('F508del')) mockKey = 'CFTR-F508del';
+      if (id.includes('TP53')) mockKey = 'TP53-R248Q';
+      const fallback = MOCK_ANALYSIS[mockKey] || MOCK_ANALYSIS[Object.keys(MOCK_ANALYSIS)[0]];
+      dataCache.current[id] = { ...fallback, source: 'SIMULATION' };
+      onSourceChange?.('SIMULATION');
       setLoading(false);
-      setError(err.message || "Analysis failed.");
+      setError(`Gemini unavailable; showing benchmark fallback. ${err.message || ''}`.trim());
+      simulateStreaming({ ...fallback, source: 'SIMULATION' });
     }
-  }, [simulateStreaming]);
+  }, [onSourceChange, simulateStreaming]);
 
   useEffect(() => {
     if (selectedVariantId) loadVariantData(selectedVariantId);
@@ -167,16 +183,25 @@ const CompensatoryDesignTab: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <div className="mm-card-glowing mm-glow mm-glow--cyan p-6 shadow-xl group">
+        <DnaHelixBackdrop color="cyan" opacity={0.20} motionVariant="fluid" seed="benchmark-repo" />
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div className="flex items-center gap-4">
             <h3 className="font-bold text-white flex items-center gap-2"><Book size={18} className="text-primary"/> Benchmark Repository</h3>
-            <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-700">
-               {['ALL', 'frameshift', 'splice', 'folding', 'custom'].map(cat => (
-                 <button 
-                  key={cat} 
+            <div className="flex flex-wrap gap-1.5 bg-slate-950/60 p-1 rounded-lg border border-slate-800">
+               {(['ALL', 'frameshift', 'splice', 'folding', 'custom'] as const).map(cat => (
+                 <button
+                  key={cat}
                   onClick={() => setCategoryFilter(cat)}
-                  className={`px-3 py-1 text-[10px] font-bold uppercase rounded transition-all ${categoryFilter === cat ? 'bg-primary text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                  aria-pressed={categoryFilter === cat}
+                  className={[
+                    'px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-md',
+                    'transition-all duration-150',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70',
+                    categoryFilter === cat
+                      ? 'bg-cyan-400/15 border border-cyan-400/40 text-cyan-400'
+                      : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800 border border-transparent',
+                  ].join(' ')}
                  >
                    {cat}
                  </button>
@@ -197,33 +222,80 @@ const CompensatoryDesignTab: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-          {filteredPresets.map(preset => (
-            <button 
+        <div className="relative z-10 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+          {filteredPresets.map(preset => {
+            const getTheme = (type: string): { color: DnaThemeColor; motionVariant: MotionVariant; glowClass: string } => {
+              switch (type) {
+                case 'frameshift': return { color: 'rose', motionVariant: 'chaotic', glowClass: 'mm-glow--rose' };
+                case 'splice': return { color: 'cyan', motionVariant: 'fluid', glowClass: 'mm-glow--cyan' };
+                case 'folding': return { color: 'emerald', motionVariant: 'pulse', glowClass: 'mm-glow--emerald' };
+                case 'control': return { color: 'blue', motionVariant: 'rhythmic', glowClass: 'mm-glow--blue' };
+                default: return { color: 'amber', motionVariant: 'angular', glowClass: 'mm-glow--amber' };
+              }
+            };
+            const theme = getTheme(preset.type);
+            const isSelected = selectedVariantId === preset.hgvs;
+            return (
+            <button
               key={preset.id}
               onClick={() => setSelectedVariantId(preset.hgvs)}
-              className={`text-left p-3 rounded-xl border transition-all relative group ${selectedVariantId === preset.hgvs ? 'bg-primary/20 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'bg-slate-900 border-slate-800 hover:border-slate-600'}`}
+              aria-pressed={isSelected}
+              className={[
+                `mm-card-glowing mm-glow ${theme.glowClass} text-left p-3 rounded-xl border transition-all duration-200 relative group`,
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70',
+                'active:scale-[0.98]',
+                isSelected
+                  ? `mm-glow--active shadow-[0_0_12px_rgba(var(--mm-glow-rgb),0.35)] border-${theme.color}-500/50 bg-${theme.color}-400/10`
+                  : 'bg-slate-900 border-slate-800 hover:border-slate-600 hover:-translate-y-px hover:shadow-md',
+              ].join(' ')}
             >
-              <div className="font-bold text-white text-xs mb-1 group-hover:text-primary transition-colors">{preset.title}</div>
-              <div className="font-mono text-[9px] text-slate-500 truncate mb-2">{preset.hgvs}</div>
-              <div className="flex justify-between items-center">
-                <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-bold ${preset.type === 'custom' ? 'bg-amber-900/40 text-amber-400 border border-amber-800' : 'bg-slate-800 text-slate-400'}`}>{preset.type}</span>
-                {preset.type === 'custom' && (
-                  <button onClick={(e) => handleDeletePreset(e, preset.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-600 hover:text-red-400 transition-opacity"><Trash2 size={12}/></button>
-                )}
+              <DnaHelixBackdrop color={theme.color} opacity={0.22} motionVariant={theme.motionVariant} seed={preset.id} />
+              <div className="relative z-10">
+                <div className={`font-bold text-xs mb-1 transition-colors ${isSelected ? `text-${theme.color}-300` : `text-slate-100 group-hover:text-${theme.color}-400`}`}>{preset.title}</div>
+                <div className="font-mono text-[9px] text-slate-500 truncate mb-2">{preset.hgvs}</div>
+                <div className="flex justify-between items-center">
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-bold ${preset.type === 'custom' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' : 'bg-slate-800 text-slate-400'}`}>{preset.type}</span>
+                  {preset.type === 'custom' && (
+                    <button
+                      onClick={(e) => handleDeletePreset(e, preset.id)}
+                      aria-label={`Delete preset ${preset.title}`}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-600 hover:text-red-400 transition-all focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-red-400/50 rounded"
+                    >
+                      <Trash2 size={12} aria-hidden="true"/>
+                    </button>
+                  )}
+                </div>
               </div>
             </button>
-          ))}
-          {filteredPresets.length === 0 && <div className="col-span-full py-12 text-center text-slate-500 italic text-sm border border-dashed border-slate-700 rounded-xl">No presets found in this category.</div>}
+          )})}
+          {filteredPresets.length === 0 && (
+            <div className="col-span-full">
+              <EmptyState
+                icon={Filter}
+                headline="No presets in this category"
+                subtext="Try switching to 'ALL' or add a custom preset."
+                size="compact"
+              />
+            </div>
+          )}
         </div>
       </div>
 
       <VariantSelector selectedId={selectedVariantId} onSelect={setSelectedVariantId} loading={loading || isStreaming}/>
 
-      {(loading || analysisData) && (
+      {(loading || analysisData) ? (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
           <div className="xl:col-span-7"><StructureCharts data={analysisData?.predictions} loading={loading}/></div>
           <div className="xl:col-span-5"><AnalysisPanel data={analysisData} loading={loading} isStreaming={isStreaming}/></div>
+        </div>
+      ) : !loading && !selectedVariantId && (
+        <div className="mm-card-glowing mm-glow mm-glow--cyan p-8 text-center group">
+          <DnaHelixBackdrop color="cyan" opacity={0.20} motionVariant="fluid" seed="design-empty" />
+          <EmptyState
+            icon={FlaskConical}
+            headline="Select a variant to begin"
+            subtext="Choose from the benchmark repository above, or enter a custom HGVS notation in the selector."
+          />
         </div>
       )}
 

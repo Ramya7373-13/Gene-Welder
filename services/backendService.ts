@@ -112,5 +112,21 @@ export const backendService = {
     async getAuditStats() {
         const res = await fetch(`${API_BASE}/api/audits/stats`);
         return res.json();
+    },
+
+    async fetchStructureFile(localPath: string): Promise<string | null> {
+        try {
+            const res = await fetch(`${API_BASE}/api/structures/file?path=${encodeURIComponent(localPath)}`);
+            if (res.ok) {
+                return await res.text();
+            }
+        } catch (e) {
+            console.warn('Failed to fetch structure file:', e);
+        }
+        return null;
+    },
+
+    getBaseUrl() {
+        return API_BASE;
     }
 };

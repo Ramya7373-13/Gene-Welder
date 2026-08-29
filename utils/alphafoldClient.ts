@@ -2,7 +2,7 @@
 import logger from './logger';
 
 // Using ESMFold as the live proxy for AlphaFold-3 style predictions
-const API_URL = process.env.REACT_APP_ALPHAFOLD3_API_URL || "https://api.esmatlas.com/foldSequence/v1/pdb/";
+const API_URL = (import.meta as any).env.VITE_ALPHAFOLD_API_URL || "https://api.esmatlas.com/foldSequence/v1/pdb/";
 const CACHE_KEY_PREFIX = 'alphafold3_cache_';
 const REQUEST_TIMEOUT = 30000; // 30 seconds
 
