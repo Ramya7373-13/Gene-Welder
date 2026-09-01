@@ -151,6 +151,44 @@ export const generateVariantReport = async (gene: string, variant: string): Prom
   };
 };
 
+/**
+ * Tier 2: fetch a plain-English clinical summary from the backend Gemini proxy.
+ * Mirrors generateVariantReport's offline/error handling — never throws, always
+ * resolves to a usable object (a deterministic simulated string when unavailable),
+ * so the Gemini API key never needs to reach the browser bundle.
+ */
+export const getClinicalSummary = async (
+  gene: string,
+  variant: string
+): Promise<{ summary: string; alphaMissense?: AlphaMissenseAnnotation | null; source: string }> => {
+  const simulated = {
+    summary: `[SIMULATION] Clinical note for ${gene} ${variant}: this is a computational prediction shown in offline/demo mode. No live AI summary is available. Interpret cautiously as decision support, not a diagnosis.`,
+    alphaMissense: null,
+    source: 'SIMULATION'
+  };
+
+  if (configService.isForcedOffline()) {
+    return simulated;
+  }
+
+  try {
+    const backendUrl = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const response = await fetch(`${backendUrl}/api/ai/clinical-summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gene, variant })
+    });
+    if (response.ok) {
+      return await response.json() as { summary: string; alphaMissense?: AlphaMissenseAnnotation | null; source: string };
+    }
+    console.warn(`Clinical summary backend returned ${response.status}; using simulated fallback.`);
+  } catch (error) {
+    console.warn('Clinical summary backend unavailable; using simulated fallback.', error);
+  }
+
+  return simulated;
+};
+
 export class ProteinChatSession {
   private history: HistoryItem[] = [];
   private contextData: string;

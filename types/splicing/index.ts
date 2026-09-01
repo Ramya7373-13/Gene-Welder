@@ -31,11 +31,14 @@ export interface SplicingAnalysisRequest {
 export interface SplicingAnalysisResult {
   analysisId: string;
   timestamp: string;
-  
+
   // Context
   gene: string;
   variant: string;
-  
+
+  // Source indicator
+  source?: 'API' | 'CACHE' | 'SIMULATION' | 'BENCHMARK';
+
   // Structural Results
   exonsAffected: ExonInfo[];
   

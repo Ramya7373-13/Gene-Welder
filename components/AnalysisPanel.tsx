@@ -2,20 +2,52 @@ import React, { useState } from 'react';
 import { AnalysisResponse } from '../types';
 import { VariantAnalysis } from '../services/geminiService';
 import { GenomicContext } from '../types/genomics';
-import { Sparkles, ArrowRight, BrainCircuit, Activity, Info, X, CheckCircle2 } from 'lucide-react';
+import { Sparkles, ArrowRight, BrainCircuit, Activity, Info, X, CheckCircle2, GitCompare } from 'lucide-react';
 import ChatWidget from './ChatWidget';
 import { configService } from '../services/configService';
 import DnaHelixBackdrop from './DnaHelixBackdrop';
+import ClinicalSummaryCard from './ClinicalSummaryCard';
+import GrokConsensusCard from './GrokConsensusCard';
 
 interface AnalysisPanelProps {
   data?: AnalysisResponse | VariantAnalysis | null;
-  genomicData?: GenomicContext | null; // Section 9.1: Prop drilling
+  genomicData?: GenomicContext | null;
   loading: boolean;
   isStreaming?: boolean;
 }
 
+const formatScore = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return value.toFixed(3);
+};
+
+const formatRmsd = (value?: number | null): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return `${value.toFixed(2)} Å`;
+};
+
 const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data, genomicData, loading, isStreaming }) => {
   const [selectedMutationInfo, setSelectedMutationInfo] = useState<number | null>(null);
+
+  const isVariantAnalysis = (d: any): d is VariantAnalysis => {
+    return Boolean(d?.variant?.protein && d?.variant?.hgvs);
+  };
+
+  const alphaMissenseScore = isVariantAnalysis(data)
+    ? data.alphaMissense?.pathogenicityScore ?? null
+    : (data as AnalysisResponse)?.alphaMissense?.pathogenicityScore ?? null;
+
+  const alphaMissenseClassification = isVariantAnalysis(data)
+    ? data.alphaMissense?.classification ?? null
+    : (data as AnalysisResponse)?.alphaMissense?.classification ?? null;
+
+  const rmsdValue = isVariantAnalysis(data)
+    ? data.predictions?.delta?.rmsd ?? null
+    : (data as AnalysisResponse)?.predictions?.delta?.rmsd ?? null;
+
+  const alphaMissenseSource = isVariantAnalysis(data)
+    ? data.alphaMissense?.source ?? null
+    : (data as AnalysisResponse)?.alphaMissense?.source ?? null;
 
   if (loading) {
     return (
@@ -93,6 +125,21 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data, genomicData, loadin
         </div>
       </div>
 
+      {/* Dual-Engine AI Consensus Validation — Gemini clinical note + Grok structural consensus */}
+      {isVariantAnalysis(data) && data.variant?.protein && data.variant?.hgvs && (
+        <section className="space-y-3" aria-label="Dual-Engine AI Consensus Validation">
+          <h3 className="text-white font-black text-sm uppercase tracking-wider flex items-center gap-2.5">
+            <div className="mm-section-accent" />
+            <GitCompare className="h-4 w-4 text-cyan-400" />
+            <span>Dual-Engine AI Consensus Validation</span>
+          </h3>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <ClinicalSummaryCard gene={data.variant.protein} variant={data.variant.hgvs} />
+            <GrokConsensusCard gene={data.variant.protein} variant={data.variant.hgvs} />
+          </div>
+        </section>
+      )}
+
       {/* AlphaMissense & Structural Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-left-2 duration-500 delay-150">
         {/* AlphaMissense Tile */}
@@ -108,34 +155,34 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data, genomicData, loadin
             <span className="text-xs text-slate-500 font-mono italic">Module Off</span>
           </div>
         ) : (
-          <div className="mm-card-glowing mm-glow mm-glow--emerald p-4 flex items-center justify-between relative overflow-hidden group">
+          <div className="mm-card-glowing mm-glow mm-glow--emerald p-4 flex flex-col gap-3 relative overflow-hidden group">
             <div className="flex items-center gap-3 relative z-10">
-              <Sparkles className="text-emerald-400 h-5 w-5" />
-              <div>
-                <div className="flex items-center gap-1.5">
+              <Sparkles className="text-emerald-400 h-5 w-5 shrink-0" />
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-slate-200 text-sm font-bold">AlphaMissense</span>
-                  {(data as VariantAnalysis)?.alphaMissense?.source && (
-                    <span className={`text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded border flex items-center gap-1 ${(data as VariantAnalysis)?.alphaMissense?.source === 'SIMULATION' ? 'text-amber-300 border-amber-400/40 bg-amber-950/40' : 'text-emerald-300 border-emerald-400/40 bg-emerald-950/40'}`}>
-                      <span className={`mm-status-dot ${(data as VariantAnalysis)?.alphaMissense?.source === 'SIMULATION' ? 'text-amber-400' : 'text-emerald-400'}`} />
-                      {(data as VariantAnalysis)?.alphaMissense?.source}
+                  {alphaMissenseSource && (
+                    <span className={`text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded border flex items-center gap-1 whitespace-nowrap ${alphaMissenseSource === 'SIMULATION' ? 'text-amber-300 border-amber-400/40 bg-amber-950/40' : 'text-emerald-300 border-emerald-400/40 bg-emerald-950/40'}`}>
+                      <span className={`mm-status-dot ${alphaMissenseSource === 'SIMULATION' ? 'text-amber-400' : 'text-emerald-400'}`} />
+                      {alphaMissenseSource}
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] text-slate-400 block font-medium">DeepMind Pathogenicity</span>
+                <span className="text-[10px] text-slate-400 font-medium">DeepMind Pathogenicity</span>
               </div>
             </div>
-            <div className="text-right relative z-10">
-              <span className="text-2xl font-mono font-black text-white block">
-                {(data as VariantAnalysis)?.alphaMissense?.pathogenicityScore.toFixed(3) ?? '0.920'}
+            <div className="flex items-center gap-3 relative z-10">
+              <span className="text-2xl font-mono font-black text-white whitespace-nowrap">
+                {loading ? '—' : formatScore(alphaMissenseScore)}
               </span>
-              <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                ((data as VariantAnalysis)?.alphaMissense?.classification ?? 'likely_pathogenic') === 'likely_pathogenic'
+              <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded whitespace-nowrap ${
+                (alphaMissenseClassification ?? 'likely_pathogenic') === 'likely_pathogenic'
                   ? 'bg-red-500/25 text-red-300 border border-red-500/40 shadow-[0_0_8px_rgba(239,68,68,0.3)]'
-                  : ((data as VariantAnalysis)?.alphaMissense?.classification) === 'likely_benign'
+                  : (alphaMissenseClassification) === 'likely_benign'
                   ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
                   : 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
               }`}>
-                {((data as VariantAnalysis)?.alphaMissense?.classification ?? 'likely_pathogenic').replace('_', ' ')}
+                {(alphaMissenseClassification ?? 'likely_pathogenic').replace('_', ' ')}
               </span>
             </div>
           </div>
@@ -151,7 +198,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data, genomicData, loadin
             </div>
           </div>
           <span className="text-2xl font-mono font-black text-white relative z-10">
-            {data.predictions.delta.rmsd.toFixed(2)} Å
+            {loading ? '—' : formatRmsd(rmsdValue)}
           </span>
         </div>
       </div>
