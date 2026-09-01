@@ -14,6 +14,11 @@ export default defineConfig(() => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      test: {
+        environment: 'jsdom',
+        setupFiles: './vitest.setup.ts',
+        include: ['services/**/*.test.ts', 'components/**/*.test.ts', 'components/**/*.test.tsx'],
       }
     };
 });

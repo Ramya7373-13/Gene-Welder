@@ -3,3 +3,7 @@ node_modules
 .env
 
 /generated/prisma
+
+# DNA Archive Lab runtime uploads (source bytes are purged post-encode; any
+# files here are transient test/dev artifacts, never committed)
+storage/
