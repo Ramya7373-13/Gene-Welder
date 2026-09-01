@@ -14,6 +14,7 @@ import { fetchAlphaFoldStructureBackend } from './utils/alphafoldUtil.js';
 import { runSpliceAi } from './utils/spliceaiUtil.js';
 import { getAlphaMissenseScore } from './utils/alphamissenseUtil.js';
 import { GoogleGenAI } from '@google/genai';
+import { dnaStorageRouter } from './routes/dnaStorage.js';
 import OpenAI from 'openai';
 
 // Defensive logging to check if DATABASE_URL is available
@@ -139,6 +140,8 @@ app.use(async (req, res, next) => {
 });
 
 // Routes
+// DNA Archive Lab: self-contained feature router (in-silico DNA data-storage simulator)
+app.use('/api/dna-storage', dnaStorageRouter);
 app.get('/', (req, res) => {
   res.json({ message: 'MutationMechanic Backend API' });
 });

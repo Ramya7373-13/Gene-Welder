@@ -25,8 +25,17 @@ mutationmechanic/
 │   │   ├── seed-patients.ts                      # Patient data seeding script
 │   │   ├── seed-mrn-variants.ts                  # MRN patient variants seeding script
 │   │   ├── seed-clinical.ts                      # Clinical data seeding script
-│   │   └── seed.ts                               # General seeding script
+│   │   ├── seed.ts                               # General seeding script
+│   │   ├── seed-test.js                          # Test seeding script
+│   │   └── migrations/                           # Database migrations
+│   │       └── 20260901000000_dna_archive_lab_phase1/  # DNA Archive Lab Phase 1 (dna_storage_* tables)
 │   ├── src/                                    # Backend source code
+│   │   ├── routes/                               # API route modules
+│   │   │   └── dnaStorage.ts                       # DNA Archive Lab router (/api/dna-storage)
+│   │   ├── domain/                              # Domain logic modules
+│   │   │   └── dnaStorage/                       # DNA Archive Lab domain layer (types, prng, codecs, errorSimulator, analytics, decoder, reportGenerator, jobRunner)
+│   │   ├── scripts/                             # Dev/debug scripts
+│   │   │   └── debug-codec-roundtrip.mjs           # Codec round-trip debug tool
 │   │   ├── server.ts                             # Main server file with all endpoints
 │   │   ├── prisma.ts                             # Prisma client configuration
 │   │   ├── index.ts                              # Server entry point
@@ -39,10 +48,12 @@ mutationmechanic/
 │   ├── storage/                                # Local storage for uploaded files
 │   ├── tests/                                  # Backend tests
 │   │   ├── unit/                                 # Unit tests
+│   │   │   ├── dnaStorage/                       # DNA Archive Lab unit tests (types, prng, analytics, codecs, codecRegistry, errorSimulator, decoder, jobRunner)
 │   │   │   ├── health.test.ts                    # Health check tests
 │   │   │   └── logger.test.ts                    # Logger tests
 │   │   └── integration/                          # Integration tests
-│   │       └── api.test.ts                       # API integration tests
+│   │       ├── api.test.ts                       # API integration tests
+│   │       └── dnaStorage.test.ts                # DNA Archive Lab API integration tests
 │   ├── .env                                    # Backend environment variables (incl. XAI_API_KEY)
 │   ├── .env.example                            # Backend environment example
 │   ├── .gitignore                              # Git ignore patterns
@@ -116,6 +127,7 @@ mutationmechanic/
 │   │   └── specs/                                # Feature specifications
 │   ├── DEV-WORKFLOW.md                         # Development workflow guide
 │   ├── Errors.md                               # Error logs and debugging info
+│   ├── DNA_ARCHIVE_LAB.md                       # DNA Archive Lab module documentation (methodology, profiles, dev setup)
 │   ├── Instructions.md                         # Setup and development instructions
 │   ├── Instructions_1.md                       # Clinical patient and variant instructions
 │   ├── ProjectStructure.md                     # This file
@@ -236,6 +248,18 @@ mutationmechanic/
 - Endpoint: `POST /api/ai/grok-validation` returns `{ validationSummary, structuralImpact, domainContext, consensusAssessment, confidence }`
 - Resilience: 30s timeout, 1 retry, try-catch ladder degrading to an offline mock payload (`source: 'FALLBACK'`) — never a fatal 500
 - Frontend: `components/GrokConsensusCard.tsx` + `services/grokService.ts`
+
+### DNA Archive Lab Endpoints (simulation only — see docs/DNA_ARCHIVE_LAB.md)
+- POST /api/dna-storage/experiments - Create experiment
+- POST /api/dna-storage/experiments/:id/upload - Upload source file (<=1MB, text/JSON/CSV)
+- POST /api/dna-storage/experiments/:id/encode - Encode file to DNA strands
+- POST /api/dna-storage/experiments/:id/simulate - Run deterministic channel-error simulation
+- POST /api/dna-storage/experiments/:id/decode - Decode and verify against source SHA-256
+- GET /api/dna-storage/experiments - List experiments
+- GET /api/dna-storage/experiments/:id - Get experiment detail
+- GET /api/dna-storage/experiments/:id/strands - Get generated strands
+- GET /api/dna-storage/experiments/:id/report - Get Markdown + JSON report
+- DELETE /api/dna-storage/experiments/:id - Delete experiment (cascades)
 
 ## Clinical Variant Schema
 

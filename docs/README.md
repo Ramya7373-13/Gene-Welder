@@ -7,6 +7,7 @@ AI-driven protein engineering dashboard for analyzing pathogenicity, structural 
 *   **Variant Explainer:** Visualizes AlphaFold 3 structures with per-residue confidence (pLDDT) heatmaps. Compare Wild-Type vs Mutant structures side-by-side.
 *   **Compensatory Design:** AI-suggested stabilizing mutations to rescue protein function.
 *   **Splicing Decoder:** Deep learning integration (AlphaGenome/DeepSplicer) to predict exon skipping and cryptic splice site activation. Includes MedGemma clinical interpretation.
+*   **DNA Archive Lab:** In-silico DNA data-storage simulator — encode small files into synthetic DNA strands, apply deterministic channel-error models (substitution, insertion, deletion, dropout, duplication, coverage), decode and verify against the original checksum, and export reproducible reports. See `docs/DNA_ARCHIVE_LAB.md`. *Simulation only — not for clinical, biological, or laboratory decision-making.*
 *   **Interactive 3D Viewer:** WebGL-based structure viewer using `3Dmol.js` with molecular surface and confidence coloring.
 
 ## Tech Stack
