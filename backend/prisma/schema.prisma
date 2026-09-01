@@ -444,3 +444,103 @@ model FamilyRisk {
   @@index([relativeType])
   @@map("family_risks")
 }
+
+// ---------------------------------------------------------------------------
+// DNA Archive Lab — in-silico DNA data-storage simulator (Phase 1).
+// Software-only module: no laboratory, synthesis, or biological content.
+// Auth model: optional userId from request body, consistent with the rest of
+// this codebase (no session/login system); ownership = record-id lookup only.
+// ---------------------------------------------------------------------------
+
+model DnaStorageExperiment {
+  id                  String   @id @default(cuid())
+  userId              String?  // Optional, request-body convention; no auth enforcement
+  title               String
+  description         String?
+  sourceFileName      String?
+  sourceMimeType      String?
+  sourceFileSizeBytes Int?
+  sourceSha256        String?
+  encodingProfileJson Json?
+  errorProfileJson    Json?
+  randomSeed          Int?
+  prngName            String?  // Reproducibility contract
+  prngVersion         String?  // Reproducibility contract
+  status              String   @default("DRAFT") // DRAFT|ENCODING|ENCODED|SIMULATING|DECODING|COMPLETED|FAILED
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  files               DnaStorageFile[]
+  strands             DnaStorageStrand[]
+  errorRuns           DnaStorageErrorRun[]
+  decodeRuns          DnaStorageDecodeRun[]
+  reports             DnaStorageReport[]
+
+  @@map("dna_storage_experiments")
+}
+
+model DnaStorageFile {
+  id           String   @id @default(cuid())
+  experimentId String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  sha256       String
+  storagePath  String?  // Local disk only, backend/storage/dna-archive/
+  storedAt     DateTime @default(now())
+  purgedAt     DateTime?  // Set when source bytes are deleted post-encode (retention rule)
+  experiment   DnaStorageExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@map("dna_storage_files")
+}
+
+model DnaStorageStrand {
+  id                String  @id @default(cuid())
+  experimentId      String
+  index             Int
+  sequence          String
+  payloadLength     Int
+  originalChecksum  String
+  gcPercent         Float
+  maxHomopolymerRun Int
+  passedConstraints Boolean
+  metadata          Json?
+  experiment        DnaStorageExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@index([experimentId, index])
+  @@map("dna_storage_strands")
+}
+
+model DnaStorageErrorRun {
+  id               String   @id @default(cuid())
+  experimentId     String
+  errorProfileJson Json
+  seed             Int
+  statsJson        Json     // dropped/duplicated/substituted/inserted/deleted counts — metadata only
+  createdAt        DateTime @default(now())
+  experiment       DnaStorageExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@map("dna_storage_error_runs")
+}
+
+model DnaStorageDecodeRun {
+  id           String   @id @default(cuid())
+  experimentId String
+  errorRunId   String?
+  resultJson   Json     // DecodeResult — metadata + checksums, no full byte payload
+  success      Boolean
+  createdAt    DateTime @default(now())
+  experiment   DnaStorageExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@map("dna_storage_decode_runs")
+}
+
+model DnaStorageReport {
+  id           String   @id @default(cuid())
+  experimentId String
+  markdown     String   @db.Text
+  reportJson   Json
+  createdAt    DateTime @default(now())
+  experiment   DnaStorageExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@map("dna_storage_reports")
+}
