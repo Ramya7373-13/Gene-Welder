@@ -6,6 +6,7 @@ import VariantExplainerTab from './components/VariantExplainerTab';
 import CompensatoryDesignTab from './components/CompensatoryDesignTab';
 import DiseaseTracerTab from './components/DiseaseTracerTab';
 import SplicingDecoderTab from './components/SplicingDecoder/SplicingDecoderTab';
+import DnaArchiveLabTab from './components/DnaArchiveLab/DnaArchiveLabTab';
 import AnalyticsDashboard, { ExportConfig } from './components/Analytics/AnalyticsDashboard';
 import HistoryTable from './components/Analytics/HistoryTable';
 import SettingsModal from './components/SettingsModal';
@@ -16,7 +17,7 @@ import { DISEASE_VARIANTS } from './constants';
 import { VariantInfo } from './types';
 import { historyService, HistoryRecord } from './services/historyService';
 import logger from './utils/logger';
-import { BarChart3, Clock, BookOpen, Zap, Microscope, Dna, BarChart2 } from 'lucide-react';
+import { BarChart3, Clock, BookOpen, Zap, Microscope, Dna, BarChart2, Archive } from 'lucide-react';
 
 // Theme Definitions
 export const THEMES = [
@@ -32,7 +33,7 @@ export const THEMES = [
   { id: 'slate', name: 'Gray Blue', primary: '#B0BEC5', hover: '#90A4AE' },
 ];
 
-const validTabs = ['explainer', 'design', 'tracer', 'splicing', 'analytics'];
+const validTabs = ['explainer', 'design', 'tracer', 'splicing', 'archive', 'analytics'];
 
 function getInitialTab() {
   const tab = new URLSearchParams(window.location.search).get('tab');
@@ -154,7 +155,7 @@ function WorkspaceApp() {
           <div className="flex justify-center">
             <TabsList
               aria-label="Main navigation"
-              className="grid w-full md:w-[90%] grid-cols-5"
+              className="grid w-full md:w-[90%] grid-cols-3 lg:grid-cols-6"
             >
               <TabsTrigger value="explainer" icon={<BookOpen size={14} aria-hidden="true" />}>
                 Explainer
@@ -167,6 +168,9 @@ function WorkspaceApp() {
               </TabsTrigger>
               <TabsTrigger value="splicing" icon={<Dna size={14} aria-hidden="true" />}>
                 Splicing
+              </TabsTrigger>
+              <TabsTrigger value="archive" icon={<Archive size={14} aria-hidden="true" />}>
+                Archive
               </TabsTrigger>
               <TabsTrigger value="analytics" icon={<BarChart3 size={14} aria-hidden="true" />}>
                 Analytics
@@ -185,6 +189,9 @@ function WorkspaceApp() {
           </TabsContent>
           <TabsContent value="splicing">
             <SplicingDecoderTab />
+          </TabsContent>
+          <TabsContent value="archive">
+            <DnaArchiveLabTab />
           </TabsContent>
 
           <TabsContent value="analytics">
