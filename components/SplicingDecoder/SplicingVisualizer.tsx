@@ -64,6 +64,19 @@ const SplicingVisualizer: React.FC<SplicingVisualizerProps> = React.memo(({ data
             <Dna size={16} className="text-cyan-400" />
             {data.gene} Gene Model <span className="text-slate-400 text-xs font-bold font-mono">({exonCount} Exons)</span>
           </h3>
+          {(data as any).source && (
+            <span className={`text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded border flex items-center gap-1 ${
+              (data as any).source === 'BENCHMARK' || (data as any).source === 'SIMULATION'
+                ? 'text-amber-300 bg-amber-950/50 border-amber-500/40'
+                : 'text-emerald-300 bg-emerald-950/50 border-emerald-500/40'
+            }`}>
+              <span className={`mm-status-dot ${
+                (data as any).source === 'BENCHMARK' || (data as any).source === 'SIMULATION'
+                  ? 'text-amber-400' : 'text-emerald-400'
+              }`} />
+              {(data as any).source}
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap gap-3 text-xs bg-slate-800 p-2 rounded-lg border border-slate-700 shadow-sm">
           <div className="flex items-center gap-1.5 px-2">
@@ -126,9 +139,14 @@ const SplicingVisualizer: React.FC<SplicingVisualizerProps> = React.memo(({ data
             const donPercent = Math.min(100, Math.max(5, (donScore / 12) * 100));
 
             return (
-              <g 
-                key={exon.exonNumber} 
-                className={`group animate-in fade-in slide-in-from-bottom-4 fill-mode-backwards anim-delay-${idx * 100}ms`} 
+              <g
+                key={exon.exonNumber}
+                className={`group animate-in fade-in slide-in-from-bottom-4 fill-mode-backwards anim-delay-${idx * 100}ms`}
+                aria-label={
+                  exon.included
+                    ? `Exon ${exon.exonNumber}: included`
+                    : `Exon ${exon.exonNumber}: skipped, ${exon.reason}`
+                }
               >
                 {/* Connecting Intron Arc */}
                 {!isLast && (

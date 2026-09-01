@@ -18,11 +18,13 @@ import DnaHelixBackdrop from '../DnaHelixBackdrop';
 
 // Storage Keys
 const STORAGE_KEYS = {
-  HISTORY: 'mutationMechanic_splicing_history_v2', 
+  HISTORY: 'mutationMechanic_splicing_history_v2',
   COUNT: 'mutationMechanic_analysis_count',
   TEMP: 'mutationMechanic_temp_input',
   SESSION: 'mutationMechanic_splicing_decoder'
 };
+
+const MAX_HISTORY_ITEMS = 50;
 
 export interface SplicingPreset {
   label: string;
@@ -490,8 +492,11 @@ const SplicingDecoderTab: React.FC = () => {
     try {
       if (mode === 'single') {
         setClinicalLoading(true);
-        const dataPromise = alphaGenomeClient.predictSplicingEffect({ geneId: input.gene, variantId: input.variant, sequenceWindow: "10kb" });
+        const data = await alphaGenomeClient.predictSplicingEffect({ geneId: input.gene, variantId: input.variant, sequenceWindow: "10kb" });
+        let enrichedData = data;
         let clinicalResult: MedGemmaAnalysis | null = null;
+        let afResult: { pdb_structure: string; confidence_score: number } | null = null;
+
         medgemmaClient.analyzeVariant(input.gene, input.variant)
           .then(clinical => {
              clinicalResult = clinical;
@@ -513,7 +518,7 @@ const SplicingDecoderTab: React.FC = () => {
              console.warn("Gemini clinical analysis failed", e);
              setClinicalLoading(false);
           });
-        const data = await dataPromise;
+
         try {
           const backendUrl = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:5000';
           const spliceResponse = await fetch(`${backendUrl}/api/spliceai`, {
@@ -541,7 +546,7 @@ const SplicingDecoderTab: React.FC = () => {
         }
         setResult(enrichedData);
         const dummySequence = "M" + "L".repeat(50) + "A".repeat(50);
-        const afResult = await alphafoldClient.predictProteinStructure(dummySequence);
+        afResult = await alphafoldClient.predictProteinStructure(dummySequence);
         setStructurePdb(afResult.pdb_structure);
         setStructureConfidence(afResult.confidence_score);
         const newCount = analysisCount + 1;
