@@ -14,12 +14,26 @@ import { fetchAlphaFoldStructureBackend } from './utils/alphafoldUtil.js';
 import { runSpliceAi } from './utils/spliceaiUtil.js';
 import { getAlphaMissenseScore } from './utils/alphamissenseUtil.js';
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 
 // Defensive logging to check if DATABASE_URL is available
 logger.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
 
 const geminiCache = new Map<string, { timestamp: number; data: any }>();
 const GEMINI_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
+// Grok (xAI) consensus-validation layer: an additive parallel intelligence engine
+// alongside Gemini. Uses the standard OpenAI SDK architecture against the xAI endpoint.
+const GROK_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+const grokCache = new Map<string, { timestamp: number; data: any }>();
+const grokClient = process.env.XAI_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.XAI_API_KEY,
+      baseURL: 'https://api.x.ai/v1',
+      timeout: 30_000,
+      maxRetries: 1,
+    })
+  : null;
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -32,6 +46,20 @@ const multerStorage = multer.diskStorage({
   }
 });
 const upload = multer({ storage: multerStorage });
+
+// Dedicated multer instance for variant .pdb uploads (Tier 1): reuses the disk-storage
+// scheme above, restricts to .pdb (case-insensitive), and caps size to guard ./storage/.
+const pdbUpload = multer({
+  storage: multerStorage,
+  limits: { fileSize: 30 * 1024 * 1024 }, // ~30 MB
+  fileFilter: (req, file, cb) => {
+    if (path.extname(file.originalname).toLowerCase() === '.pdb') {
+      cb(null, true);
+    } else {
+      cb(null, false);
+    }
+  },
+});
 
 // Prisma client is now imported from ./prisma.js
 
@@ -126,6 +154,11 @@ app.get('/api/health', async (req, res) => {
         status: process.env.GEMINI_API_KEY ? 'ok' : 'unconfigured',
         model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
         configured: Boolean(process.env.GEMINI_API_KEY)
+      },
+      grok: {
+        status: process.env.XAI_API_KEY ? 'ok' : 'unconfigured',
+        model: process.env.GROK_MODEL || 'grok-4.6',
+        configured: Boolean(process.env.XAI_API_KEY)
       },
       alphamissense: {
         status: 'ok',
@@ -306,6 +339,161 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
   }
 });
 
+// POST /api/ai/clinical-summary - Plain-English decision-support paragraph (Tier 2)
+// Powers the frontend ClinicalSummaryCard. Returns a single cautious prose paragraph
+// plus an optional AlphaMissense annotation; results are cached for GEMINI_CACHE_TTL.
+app.post('/api/ai/clinical-summary', async (req, res) => {
+  const { gene, variant } = req.body as { gene?: string; variant?: string };
+  if (!gene || !variant) {
+    return res.status(400).json({ error: 'gene and variant are required' });
+  }
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({ error: 'Gemini integration is not configured' });
+  }
+
+  const cacheKey = `summary:${gene}:${variant}`.toUpperCase();
+  const cached = geminiCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < GEMINI_CACHE_TTL) {
+    return res.json({ ...cached.data, source: 'CACHE' });
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const prompt = `You are a clinical genomics assistant generating plain-English decision support for the genetic variant ${gene} ${variant}.
+
+Write a single, self-contained paragraph (roughly 3 to 5 sentences) that a non-specialist clinician or an informed patient could understand. Explain, in accessible language, what is currently understood about this variant and its potential functional or clinical impact.
+
+Rules:
+- Use cautious, hedged language ("may", "is associated with", "is predicted to"); never state a definitive diagnosis.
+- Do not claim certainty beyond the available evidence, and do not invent gene functions, statistics, population frequencies, or citations.
+- Explicitly frame this as computational decision support, not a clinical determination.
+- Return ONLY the paragraph as plain prose — no headings, lists, JSON, or markdown.`;
+
+    const response = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
+      contents: prompt,
+      config: { temperature: 0.3 }
+    });
+
+    if (!response.text) {
+      return res.status(502).json({ error: 'Gemini returned an empty response' });
+    }
+    // Capture immediately (response.text is a getter) so narrowing survives the await below.
+    const summaryText = response.text.trim();
+
+    // Enrich with AlphaMissense (best-effort; never blocks the summary)
+    let alphaMissense = null;
+    try {
+      alphaMissense = await getAlphaMissenseScore(gene, variant);
+    } catch (amErr) {
+      logger.warn('AlphaMissense score lookup failed:', amErr);
+    }
+
+    const payload = {
+      summary: summaryText,
+      alphaMissense,
+      gene,
+      variant,
+      source: 'API'
+    };
+    geminiCache.set(cacheKey, { timestamp: Date.now(), data: payload });
+    return res.json(payload);
+  } catch (error) {
+    logger.error('Gemini clinical summary failed:', error);
+    return res.status(502).json({ error: 'Gemini clinical summary failed' });
+  }
+});
+
+// POST /api/ai/grok-validation - Dual-Engine AI Consensus Validation (Grok layer)
+// Uses the xAI flagship model to produce a precision validation summary of the
+// mutation's structural impact, as a parallel second opinion to the Gemini engine.
+// Cached for 7 days under `grok:GENE:VARIANT`; falls back to an offline mock
+// summary on upstream timeout or failure without throwing fatal errors.
+app.post('/api/ai/grok-validation', async (req, res) => {
+  const { gene, variant } = req.body as { gene?: string; variant?: string };
+  if (!gene || !variant) {
+    return res.status(400).json({ error: 'gene and variant are required' });
+  }
+  if (!grokClient) {
+    return res.status(503).json({ error: 'Grok (xAI) integration is not configured' });
+  }
+
+  const cacheKey = `grok:${gene}:${variant}`.toUpperCase();
+  const cached = grokCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < GROK_CACHE_TTL) {
+    return res.json({ ...cached.data, source: 'CACHE' });
+  }
+
+  const prompt = `You are a structural biology and molecular genetics expert performing an independent consensus validation of the mutation ${gene} ${variant}.
+
+Produce a highly technical, precision validation summary of the mutation's structural impact on the encoded protein. Address:
+- The residue change and its position within known functional domains or motifs.
+- Predicted effects on secondary/tertiary structure, folding stability, and packing.
+- Mechanistic consequences for binding sites, active sites, or interaction interfaces.
+- A consensus-style agreement assessment: which aspects of a pathogenic/functional-impact hypothesis are structurally supported, and which remain speculative.
+
+Rules:
+- Use cautious, hedged scientific language; do not invent citations, statistics, or domain annotations.
+- Frame the output as computational decision support, not a clinical determination.
+- Return ONLY valid JSON of the shape:
+{
+  "validationSummary": "",
+  "structuralImpact": "",
+  "domainContext": "",
+  "consensusAssessment": "",
+  "confidence": 0
+}
+Keep "confidence" between 0 and 100.`;
+
+  try {
+    const completion = await grokClient.chat.completions.create({
+      model: process.env.GROK_MODEL || 'grok-4.6',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    });
+
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (!text) {
+      return res.status(502).json({ error: 'Grok returned an empty response' });
+    }
+
+    const data = JSON.parse(text);
+    const payload = {
+      ...data,
+      gene,
+      variant,
+      variantId: `${gene}-${variant}`,
+      engine: 'grok',
+      model: process.env.GROK_MODEL || 'grok-4.6',
+      timestamp: Date.now(),
+      source: 'API'
+    };
+    grokCache.set(cacheKey, { timestamp: Date.now(), data: payload });
+    return res.json(payload);
+  } catch (error) {
+    // Resilience ladder: log, then degrade to an offline mock so callers get a
+    // usable (clearly-flagged) response instead of a fatal application error.
+    logger.warn('Grok validation upstream failed, serving offline mock fallback:', error);
+
+    const mockPayload = {
+      validationSummary: `Offline consensus validation for ${gene} ${variant}: the Grok validation engine is temporarily unavailable, so a deterministic placeholder summary is provided. Structural impact cannot be independently confirmed at this time.`,
+      structuralImpact: 'Structural impact assessment unavailable while offline; cross-check against the primary Gemini engine output before drawing conclusions.',
+      domainContext: 'Domain and motif context unavailable while offline.',
+      consensusAssessment: 'Consensus could not be established while offline; treat the primary engine output as unvalidated.',
+      confidence: 0,
+      gene,
+      variant,
+      variantId: `${gene}-${variant}`,
+      engine: 'grok',
+      model: 'offline-mock',
+      timestamp: Date.now(),
+      source: 'FALLBACK'
+    };
+    return res.json(mockPayload);
+  }
+});
+
 app.post('/api/spliceai', async (req, res) => {
   const { gene, variant, chromosome, position, reference, alternate } = req.body as {
     gene?: string;
@@ -377,6 +565,84 @@ app.post('/api/structures', upload.single('file'), async (req, res) => {
   } catch (error) {
     logger.error('Error uploading structure:', error);
     return res.status(500).json({ error: 'Failed to upload structure' });
+  }
+});
+
+// POST /api/variants/upload-pdb - Attach a .pdb structure to a Variant's WT/mutant slot
+app.post('/api/variants/upload-pdb', pdbUpload.single('file'), async (req, res) => {
+  const { variantId, slot } = req.body as { variantId?: string; slot?: string };
+
+  // fileFilter rejects non-.pdb uploads (leaves req.file undefined); also covers a missing file.
+  if (!req.file) {
+    return res.status(400).json({ error: 'Missing or invalid .pdb file' });
+  }
+
+  // Capture concrete values so the cleanup closure is null-safe under strictNullChecks.
+  const uploadedPath = req.file.path;
+  const originalName = req.file.originalname;
+  const fileSize = req.file.size;
+
+  // Remove the file multer already wrote — invoked on every early-exit / failure path.
+  const scrubOrphan = async () => {
+    try {
+      await fs.unlink(uploadedPath);
+    } catch (cleanupError) {
+      logger.error('Failed to scrub orphan PDB upload:', cleanupError);
+    }
+  };
+
+  if (!variantId || typeof variantId !== 'string') {
+    await scrubOrphan();
+    return res.status(400).json({ error: 'Missing variantId' });
+  }
+
+  if (slot !== 'wildtype' && slot !== 'mutant') {
+    await scrubOrphan();
+    return res.status(400).json({ error: "Invalid slot: expected 'wildtype' or 'mutant'" });
+  }
+
+  try {
+    const variantRecord = await prisma.variant.findUnique({ where: { id: variantId } });
+    if (!variantRecord) {
+      await scrubOrphan();
+      return res.status(404).json({ error: 'Variant not found' });
+    }
+
+    const fileBuffer = await fs.readFile(uploadedPath);
+    const checksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+    const data = slot === 'wildtype'
+      ? { wildtype_structure_path: uploadedPath }
+      : { mutant_structure_path: uploadedPath };
+
+    const variant = await prisma.variant.update({
+      where: { id: variantId },
+      data,
+    });
+
+    const structureFile = await prisma.structureFile.create({
+      data: {
+        variantId,
+        file_type: 'pdb',
+        file_name: originalName,
+        file_size: fileSize,
+        local_path: uploadedPath,
+        checksum,
+      },
+    });
+
+    await auditAction(prisma, 'pdb_uploaded', variant.id, 'Variant', null, {
+      slot,
+      file_name: originalName,
+      file_size: fileSize,
+      structureFileId: structureFile.id,
+    });
+
+    return res.json({ variant, structureFile, path: uploadedPath });
+  } catch (error) {
+    await scrubOrphan();
+    logger.error('Error uploading PDB:', error);
+    return res.status(500).json({ error: 'Failed to upload PDB' });
   }
 });
 

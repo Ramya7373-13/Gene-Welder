@@ -38,6 +38,12 @@ export interface AnalysisResponse {
     native: string; // PDB string
     mutant?: string; // PDB string
   };
+  // AlphaMissense pathogenicity data
+  alphaMissense?: {
+    pathogenicityScore: number;
+    classification: string;
+    source: string;
+  } | null;
   // Claude/Gemini generated analysis usually appended here in a real app
   aiAnalysis?: {
     summary: string;

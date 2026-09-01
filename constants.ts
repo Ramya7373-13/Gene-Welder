@@ -497,8 +497,13 @@ export const MOCK_ANALYSIS: Record<string, AnalysisResponse> = {
     timestamp: Date.now(),
     predictions: {
       native: { plddt_avg: 91.0, domains: ["Tyrosine Kinase Domain"] },
-      mutant: { plddt_avg: 89.5, rmsd_to_native: 1.5, domains_affected: ["Alpha-C Helix"] },
-      delta: { rmsd: 1.5, confidence_drop: 1.5, functional_impact: "Hyperactivation & Drug Sensitivity" }
+      mutant: { plddt_avg: 89.5, rmsd_to_native: 1.42, domains_affected: ["Alpha-C Helix"] },
+      delta: { rmsd: 1.42, confidence_drop: 1.5, functional_impact: "Hyperactivation & Drug Sensitivity" }
+    },
+    alphaMissense: {
+      pathogenicityScore: 0.982,
+      classification: "likely_pathogenic",
+      source: "SIMULATION"
     },
     aiAnalysis: {
       summary: "L858 is located in the activation loop. Substitution with the charged Arginine (R) disrupts the auto-inhibitory helical turn found in the inactive state. This shifts the equilibrium heavily towards the active state. Interestingly, this conformational change also creates the specific binding pocket that makes this variant hypersensitive to TKI inhibitors like Gefitinib.",
