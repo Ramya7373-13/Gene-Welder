@@ -733,3 +733,65 @@ html, body, #root {
   }
 }
 
+/* ============================================================
+   Tier 3 — Printable Clinical Variant Report
+   The report is portaled to <body> (sibling of #root) and hidden
+   on screen. @media print hides the entire interactive app (#root)
+   — stripping every backdrop, glow, and sidebar in one move — and
+   reveals only this clean, light clinical document.
+   ============================================================ */
+.mm-printable-report {
+  display: none;
+}
+
+@media print {
+  /* Hide the whole dark interactive app; show only the portaled report. */
+  #root {
+    display: none !important;
+  }
+  .mm-printable-report {
+    display: block !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .mm-pr-page {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  /* Keep logical blocks from splitting across page boundaries. */
+  .mm-pr-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Defensive: neutralize any dark-theme chrome, animated backdrop, WebGL canvas,
+     or explicitly no-print control that might otherwise bleed into the print view. */
+  .mm-glow,
+  .mm-card-glowing {
+    box-shadow: none !important;
+  }
+  .mm-dna-backdrop,
+  .mm-dna-svg,
+  canvas {
+    display: none !important;
+  }
+  .mm-no-print {
+    display: none !important;
+  }
+
+  /* Page geometry and a clean white ground. */
+  @page {
+    size: auto;
+    margin: 14mm;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
+

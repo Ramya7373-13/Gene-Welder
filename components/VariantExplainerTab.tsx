@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Loader, BookOpen, Search, ArrowLeft, Activity, Scale, CheckSquare, Square, X, Plus, Database, History, Box, Dna, Globe, ChevronDown } from 'lucide-react';
+import { Loader, BookOpen, Search, ArrowLeft, Printer, Activity, Scale, CheckSquare, Square, X, Plus, Database, History, Box, Dna, Globe, ChevronDown } from 'lucide-react';
 import EmptyState from './EmptyState';
 import MechanismExplainer from './MechanismExplainer';
 import ProteinStructureViewer from './ProteinStructureViewer';
@@ -8,6 +8,7 @@ import GenomicAnnotationPanel, { GenomicBrowser } from './GenomicAnnotationPanel
 import AnalysisPanel from './AnalysisPanel';
 import ToastNotification, { ToastType } from './ToastNotification';
 import DnaHelixBackdrop from './DnaHelixBackdrop';
+import PrintableVariantReport from './PrintableVariantReport';
 import { getVariantGlowTheme } from '../utils/themeUtils';
 import { VariantInfo } from '../types';
 import { GenomicContext } from '../types/genomics';
@@ -555,12 +556,21 @@ const VariantExplainerTab: React.FC<VariantExplainerTabProps> = ({ variants, ext
     const reportTheme = getVariantGlowTheme(report.variant);
     return (
       <div className="space-y-8 animate-in fade-in duration-500">
-        <button
-          onClick={clearView}
-          className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 font-bold text-xs uppercase tracking-wider px-3 py-2 rounded-lg hover:bg-slate-800/60 w-fit transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 active:scale-[0.97]"
-        >
-          <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to Explainer
-        </button>
+        <div className="flex items-center justify-between gap-3 flex-wrap mm-no-print">
+          <button
+            onClick={clearView}
+            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 font-bold text-xs uppercase tracking-wider px-3 py-2 rounded-lg hover:bg-slate-800/60 w-fit transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 active:scale-[0.97]"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to Explainer
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 text-emerald-300 hover:text-emerald-200 font-bold text-xs uppercase tracking-wider px-4 py-2 rounded-lg border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/50 hover:border-emerald-400/70 w-fit transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 active:scale-[0.97] shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+            aria-label="Export printable clinical report"
+          >
+            <Printer className="w-4 h-4" aria-hidden="true" /> Export printable report
+          </button>
+        </div>
 
         {/* Report Hero Banner */}
         <div className={`mm-card-glowing mm-glow ${reportTheme.glowClass} p-8 relative overflow-hidden group shadow-2xl flex justify-between items-center flex-wrap gap-4`}>
@@ -582,33 +592,31 @@ const VariantExplainerTab: React.FC<VariantExplainerTabProps> = ({ variants, ext
           </div>
 
           {report.alphaMissense && (
-            <div className="bg-slate-950/90 border border-cyan-500/40 px-5 py-3 rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.2)] flex items-center gap-3 relative z-10 flex-shrink-0" style={{ width: 'fit-content' }}>
-              <div className="flex flex-col min-w-0">
-                <div className="text-[10px] text-slate-400 uppercase font-extrabold tracking-wider flex items-center gap-2 whitespace-nowrap">
-                  <span>AlphaMissense</span>
-                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded border font-bold uppercase flex items-center gap-1 ${
-                    report.alphaMissense.source === 'SIMULATION'
-                      ? 'text-amber-300 border-amber-400/40 bg-amber-400/10'
-                      : 'text-emerald-300 border-emerald-400/40 bg-emerald-400/10'
-                  }`}>
-                    <span className={`mm-status-dot ${report.alphaMissense.source === 'SIMULATION' ? 'text-amber-400' : 'text-emerald-400'}`} />
-                    {report.alphaMissense.source}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="font-mono text-2xl font-black text-white whitespace-nowrap">
-                    {report.alphaMissense.pathogenicityScore.toFixed(3)}
-                  </span>
-                  <span className={`text-[10px] px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider whitespace-nowrap ${
-                    report.alphaMissense.classification === 'likely_pathogenic'
-                      ? 'bg-red-500/25 text-red-300 border border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
-                      : report.alphaMissense.classification === 'likely_benign'
-                      ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]'
-                      : 'bg-amber-500/25 text-amber-300 border border-amber-500/50'
-                  }`}>
-                    {report.alphaMissense.classification.replace('_', ' ')}
-                  </span>
-                </div>
+            <div className="bg-slate-950/90 border border-cyan-500/40 px-5 py-3 rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.2)] flex flex-col gap-2 relative z-10 flex-shrink-0" style={{ width: 'fit-content' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 uppercase font-extrabold tracking-wider">AlphaMissense</span>
+                <span className={`text-[9px] font-mono px-2 py-0.5 rounded border font-bold uppercase flex items-center gap-1 ${
+                  report.alphaMissense.source === 'SIMULATION'
+                    ? 'text-amber-300 border-amber-400/40 bg-amber-400/10'
+                    : 'text-emerald-300 border-emerald-400/40 bg-emerald-400/10'
+                }`}>
+                  <span className={`mm-status-dot ${report.alphaMissense.source === 'SIMULATION' ? 'text-amber-400' : 'text-emerald-400'}`} />
+                  {report.alphaMissense.source}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-2xl font-black text-white whitespace-nowrap">
+                  {report.alphaMissense.pathogenicityScore.toFixed(3)}
+                </span>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider whitespace-nowrap ${
+                  report.alphaMissense.classification === 'likely_pathogenic'
+                    ? 'bg-red-500/25 text-red-300 border border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+                    : report.alphaMissense.classification === 'likely_benign'
+                    ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                    : 'bg-amber-500/25 text-amber-300 border border-amber-500/50'
+                }`}>
+                  {report.alphaMissense.classification.replace('_', ' ')}
+                </span>
               </div>
             </div>
           )}
@@ -671,6 +679,9 @@ const VariantExplainerTab: React.FC<VariantExplainerTabProps> = ({ variants, ext
             <GenomicAnnotationPanel data={genomicData} loading={isGenomicLoading} />
           </div>
         </div>
+
+        {/* Off-screen printable clinical report (Tier 3) — portaled to <body>, revealed only by @media print */}
+        <PrintableVariantReport report={report} genomicData={genomicData} />
       </div>
     );
   }

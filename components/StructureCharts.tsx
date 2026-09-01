@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { PredictionData } from '../types';
 import {
   BarChart,
@@ -23,6 +23,95 @@ interface StructureChartsProps {
 }
 
 const StructureCharts: React.FC<StructureChartsProps> = ({ data, loading }) => {
+  const [orbitRotation, setOrbitRotation] = useState(0);
+  const [orbitScale, setOrbitScale] = useState(1);
+  const dragRef = useRef<{
+    active: boolean;
+    pointerId: number;
+    lastX: number;
+    lastY: number;
+    lastAngle: number;
+  }>({
+    active: false,
+    pointerId: -1,
+    lastX: 0,
+    lastY: 0,
+    lastAngle: 0,
+  });
+
+  const chartWrapperRef = useRef<HTMLDivElement>(null);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const wrapper = chartWrapperRef.current;
+    if (!wrapper) return;
+
+    const rect = wrapper.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    dragRef.current = {
+      active: true,
+      pointerId: e.pointerId,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      lastAngle: Math.atan2(e.clientY - centerY, e.clientX - centerX),
+    };
+
+    wrapper.setPointerCapture(e.pointerId);
+    wrapper.style.cursor = 'grabbing';
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag.active || e.pointerId !== drag.pointerId) return;
+
+    const wrapper = chartWrapperRef.current;
+    if (!wrapper) return;
+
+    const rect = wrapper.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const currentAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+
+    let angleDelta = currentAngle - drag.lastAngle;
+    if (angleDelta > Math.PI) angleDelta -= 2 * Math.PI;
+    if (angleDelta < -Math.PI) angleDelta += 2 * Math.PI;
+
+    setOrbitRotation(prev => prev + angleDelta + (e.clientX - drag.lastX) * 0.0025);
+
+    const dy = e.clientY - drag.lastY;
+    const scaleDelta = -dy * 0.005;
+    setOrbitScale(prev => Math.max(0.72, Math.min(1.28, prev + scaleDelta)));
+
+    drag.lastX = e.clientX;
+    drag.lastY = e.clientY;
+    drag.lastAngle = currentAngle;
+  }, []);
+
+  const stopOrbitDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active || dragRef.current.pointerId !== e.pointerId) {
+      return;
+    }
+
+    dragRef.current.active = false;
+
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+
+    e.currentTarget.style.cursor = 'grab';
+  }, []);
+
+  const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+    stopOrbitDrag(e);
+  }, [stopOrbitDrag]);
+
+  const resetOrbit = useCallback(() => {
+    setOrbitRotation(0);
+    setOrbitScale(1);
+  }, []);
+
   // Theme colors
   const THEME = {
     background: '#1e293b', // slate-800
@@ -191,34 +280,68 @@ const StructureCharts: React.FC<StructureChartsProps> = ({ data, loading }) => {
 
       {/* Structural Stability Radar */}
       <div className="p-6 rounded-xl border border-slate-700 shadow-sm hover:border-slate-600 transition-colors bg-theme-background">
-        <h3 className="text-white font-semibold mb-4">Structural Integrity Profile</h3>
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={metricsData}>
-              <PolarGrid stroke={THEME.grid} />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: THEME.text, fontSize: 12 }} />
-              <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-              <Radar
-                name="Native"
-                dataKey="native"
-                stroke={THEME.barNative}
-                strokeWidth={2}
-                fill={THEME.barNative}
-                fillOpacity={0.3}
-              />
-              <Radar
-                name="Mutant"
-                dataKey="mutant"
-                stroke={THEME.barMutant}
-                strokeWidth={2}
-                fill={THEME.barMutant}
-                fillOpacity={0.3}
-              />
-              <Legend wrapperClassName="chart-legend" />
-              <Tooltip content={<RadarCustomTooltip/>} />
-            </RadarChart>
-          </ResponsiveContainer>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white font-semibold">Structural Integrity Profile</h3>
+          <button
+            type="button"
+            onClick={resetOrbit}
+            className="text-[10px] uppercase tracking-wide text-slate-500 hover:text-cyan-300 transition-colors"
+            title="Reset radar view"
+          >
+            Reset view
+          </button>
         </div>
+        <div
+          ref={chartWrapperRef}
+          className="h-64 w-full select-none overflow-visible"
+          style={{ touchAction: 'none', cursor: 'grab' }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={stopOrbitDrag}
+          onPointerCancel={stopOrbitDrag}
+        >
+          <div
+            className="h-full w-full"
+            style={{
+              transform: `rotate(${orbitRotation}rad) scale(${orbitScale})`,
+              transformOrigin: 'center center',
+              transition: dragRef.current.active
+                ? 'none'
+                : 'transform 120ms ease-out',
+            }}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={metricsData}>
+                <PolarGrid stroke={THEME.grid} />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: THEME.text, fontSize: 12 }} />
+                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                <Radar
+                  name="Native"
+                  dataKey="native"
+                  stroke={THEME.barNative}
+                  strokeWidth={2}
+                  fill={THEME.barNative}
+                  fillOpacity={0.3}
+                  isAnimationActive={false}
+                />
+                <Radar
+                  name="Mutant"
+                  dataKey="mutant"
+                  stroke={THEME.barMutant}
+                  strokeWidth={2}
+                  fill={THEME.barMutant}
+                  fillOpacity={0.3}
+                  isAnimationActive={false}
+                />
+                <Legend wrapperStyle={{ fontSize: '12px', color: THEME.text }} />
+                <Tooltip content={<RadarCustomTooltip />} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <p className="mt-2 text-[10px] text-slate-500">
+          Left-click and drag around the plot to orbit. Vertical drag changes scale.
+        </p>
       </div>
     </div>
   );

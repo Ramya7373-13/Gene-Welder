@@ -117,7 +117,7 @@ const DiseaseTracerTab: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="mm-card-glowing mm-glow mm-glow--blue p-6 group">
-        <DnaHelixBackdrop color="blue" opacity={0.06} motionVariant="fluid" seed="tracer-hero" />
+        <DnaHelixBackdrop color="blue" opacity={0.10} motionVariant="fluid" seed="tracer-hero" />
         <div className="relative z-10">
 
         {/* Page header */}

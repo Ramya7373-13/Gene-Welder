@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, Maximize2, RotateCcw, ZoomIn, ZoomOut, Info, AlertTriangle, Box, Layers, Atom } from 'lucide-react';
 import { configService } from '../services/configService';
 import { backendService } from '../services/backendService';
@@ -104,6 +104,47 @@ const ProteinStructureViewer: React.FC<ProteinStructureViewerProps> = ({
   const [libLoaded, setLibLoaded] = useState(false);
   const [pdbData, setPdbData] = useState<string | null>(pdbDataProp || null);
   const [loading, setLoading] = useState(loadingProp ?? false);
+  const [showRepresentationControls, setShowRepresentationControls] = useState(false);
+
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRevealTimer = useCallback(() => {
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  }, []);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleReveal = useCallback(() => {
+    clearHideTimer();
+    clearRevealTimer();
+    revealTimerRef.current = setTimeout(() => {
+      setShowRepresentationControls(true);
+    }, 1000);
+  }, [clearHideTimer, clearRevealTimer]);
+
+  const scheduleHide = useCallback(() => {
+    clearRevealTimer();
+    clearHideTimer();
+    hideTimerRef.current = setTimeout(() => {
+      setShowRepresentationControls(false);
+    }, 400);
+  }, [clearRevealTimer, clearHideTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearRevealTimer();
+      clearHideTimer();
+    };
+  }, [clearRevealTimer, clearHideTimer]);
 
   // Fetch PDB content from local path or AlphaFold EBI
   useEffect(() => {
@@ -263,6 +304,20 @@ const ProteinStructureViewer: React.FC<ProteinStructureViewerProps> = ({
     }
   };
 
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (containerRef.current?.contains(e.target as Node)) {
+      e.preventDefault();
+    }
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWheel, { passive: false });
+      return () => container.removeEventListener('wheel', handleWheel);
+    }
+  }, [handleWheel]);
+
   const handleReset = () => {
     if (viewerRef.current) {
       viewerRef.current.zoomTo();
@@ -331,7 +386,7 @@ const ProteinStructureViewer: React.FC<ProteinStructureViewerProps> = ({
     );
   }
 
-  if (!pdbData) {
+  if (!pdbData && !structurePath && !gene) {
     return (
       <div className="w-full h-80 bg-slate-900 rounded-xl border border-slate-700 flex flex-col items-center justify-center text-slate-500">
         <Maximize2 size={24} className="opacity-50 mb-2" />
@@ -342,13 +397,57 @@ const ProteinStructureViewer: React.FC<ProteinStructureViewerProps> = ({
 
   return (
     <div className="relative w-full h-80 group">
-      <div 
-        ref={containerRef} 
+      <div
+        ref={containerRef}
         className="w-full h-full bg-slate-950 rounded-xl border border-blue-500/30 shadow-[inset_0_0_24px_rgba(0,0,0,0.9)] overflow-hidden cursor-move relative z-0"
         role="application"
         aria-label="3D Protein Structure Viewer"
-      ></div>
-      
+      />
+
+      {/* Hotspot for revealing controls */}
+      <div
+        aria-hidden="true"
+        className="absolute bottom-0 left-0 h-20 w-28 z-20"
+        onPointerEnter={scheduleReveal}
+        onPointerLeave={scheduleHide}
+      />
+
+      {/* Representation Controls */}
+      <div
+        className={[
+          'absolute bottom-3 left-3 z-30 flex items-center gap-2',
+          'transition-all duration-300 ease-out',
+          showRepresentationControls
+            ? 'translate-y-0 opacity-100 pointer-events-auto'
+            : 'translate-y-4 opacity-0 pointer-events-none',
+        ].join(' ')}
+        onPointerEnter={clearHideTimer}
+        onPointerLeave={scheduleHide}
+        onFocus={clearHideTimer}
+        onBlur={scheduleHide}
+      >
+        {(['cartoon', 'sphere', 'stick'] as RenderStyle[]).map((style) => (
+          <button
+            key={style}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleStyleChange(style);
+            }}
+            aria-pressed={renderStyle === style}
+            aria-label={`Show ${style} molecular representation`}
+            className={[
+              'px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider border transition-all shadow-lg',
+              renderStyle === style
+                ? 'bg-primary/30 border-primary text-primary shadow-[0_0_8px_rgba(var(--mm-color-primary),0.4)]'
+                : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-500',
+            ].join(' ')}
+            title={`Switch to ${style} view`}
+          >
+            {style}
+          </button>
+        ))}
+      </div>
+
       <div className="absolute top-3 left-3 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-blue-500/40 text-xs text-white font-mono pointer-events-none flex items-center gap-2 z-10 shadow-[0_0_12px_rgba(59,130,246,0.3)]">
         <span className="mm-status-dot text-blue-400" />
         <span className="font-bold">{label}</span>
@@ -437,24 +536,6 @@ const ProteinStructureViewer: React.FC<ProteinStructureViewerProps> = ({
           </div>
         </div>
       )}
-
-      <div className="absolute bottom-3 left-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
-        {(['cartoon', 'sphere', 'stick'] as RenderStyle[]).map((style) => (
-          <button
-            key={style}
-            onClick={() => handleStyleChange(style)}
-            className={[
-              'px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider border transition-all shadow-lg',
-              renderStyle === style
-                ? 'bg-primary/30 border-primary text-primary shadow-[0_0_8px_rgba(var(--mm-color-primary),0.4)]'
-                : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-500'
-            ].join(' ')}
-            title={`Switch to ${style} view`}
-          >
-            {style}
-          </button>
-        ))}
-      </div>
 
       <div className="absolute bottom-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
         <button onClick={() => handleZoom('out')} className="p-2 bg-slate-800/90 text-white rounded-lg hover:bg-slate-700 border border-slate-700 hover:border-slate-500 transition-all shadow-lg" title="Zoom Out">

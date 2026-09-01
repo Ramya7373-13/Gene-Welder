@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import VariantSelector from './VariantSelector';
 import StructureCharts from './StructureCharts';
 import AnalysisPanel from './AnalysisPanel';
+import ProteinStructureViewer from './ProteinStructureViewer';
 import { AnalysisResponse } from '../types';
 import { MOCK_ANALYSIS } from '../constants';
 import { AlertCircle, RefreshCw, ServerCrash, Save, Book, ChevronRight, Play, Download, Upload, Trash2, Edit, Filter, ListFilter, X, Plus, FlaskConical } from 'lucide-react';
@@ -35,7 +36,8 @@ const CompensatoryDesignTab: React.FC<CompensatoryDesignTabProps> = ({ onSourceC
   const [loading, setLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+  const [renderStyle, setRenderStyle] = useState<'cartoon' | 'sphere' | 'stick'>('cartoon');
+
   const [customPresets, setCustomPresets] = useState<PresetSchema[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
@@ -284,10 +286,68 @@ const CompensatoryDesignTab: React.FC<CompensatoryDesignTabProps> = ({ onSourceC
       <VariantSelector selectedId={selectedVariantId} onSelect={setSelectedVariantId} loading={loading || isStreaming}/>
 
       {(loading || analysisData) ? (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-          <div className="xl:col-span-7"><StructureCharts data={analysisData?.predictions} loading={loading}/></div>
-          <div className="xl:col-span-5"><AnalysisPanel data={analysisData} loading={loading} isStreaming={isStreaming}/></div>
-        </div>
+        <>
+          {/* AlphaFold 3 Structure Panel */}
+          {(loading || analysisData?.pdbData?.native) && (
+            <div className="mm-card-glowing mm-glow mm-glow--cyan p-6 rounded-xl shadow-xl relative overflow-hidden">
+              <div className="flex justify-between items-center mb-4 relative z-10">
+                <div className="flex items-center gap-2">
+                  <div className="mm-section-accent mm-section-accent--blue" />
+                  <h3 className="text-xs font-black text-slate-300 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="7.5 4.21 12 6.81 16.5 4.21"></polyline><polyline points="7.5 19.79 7.5 14.6 3 12"></polyline><polyline points="21 12 16.5 14.6 16.5 19.79"></polyline><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    AlphaFold 3 Structure
+                  </h3>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">M34-Type</span>
+                  <div className="flex bg-slate-800 rounded-lg border border-slate-700 p-0.5">
+                    {(['cartoon', 'sphere', 'stick'] as const).map((style) => (
+                      <button
+                        key={style}
+                        onClick={() => setRenderStyle(style)}
+                        aria-pressed={renderStyle === style}
+                        className={[
+                          'px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all',
+                          renderStyle === style
+                            ? 'bg-primary/30 text-primary border border-primary/50 shadow-[0_0_8px_rgba(var(--mm-color-primary),0.3)]'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                        ].join(' ')}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="relative z-10">
+                <ProteinStructureViewer
+                  pdbData={analysisData?.pdbData?.native || null}
+                  gene={selectedVariantId?.split(/[\s:]/)[0] || ''}
+                  highlightResidue={parseInt(selectedVariantId?.match(/(\d+)/)?.[1] || '1', 10)}
+                  loading={loading}
+                  label="AlphaFold 3D"
+                  colorBy="confidence"
+                  renderStyle={renderStyle}
+                  onRenderStyleChange={setRenderStyle}
+                  structuralMetrics={analysisData?.predictions?.native ? {
+                    plddt_avg: analysisData.predictions.native.plddt_avg,
+                    rmsd_to_wildtype: analysisData.predictions.delta.rmsd,
+                    domains_affected: analysisData.predictions.native.domains_affected,
+                    wildtype_structure_path: null,
+                    mutant_structure_path: null,
+                    alphaFold_version: null,
+                  } : null}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Charts and Analysis Grid */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+            <div className="xl:col-span-7"><StructureCharts data={analysisData?.predictions} loading={loading}/></div>
+            <div className="xl:col-span-5"><AnalysisPanel data={analysisData} loading={loading} isStreaming={isStreaming}/></div>
+          </div>
+        </>
       ) : !loading && !selectedVariantId && (
         <div className="mm-card-glowing mm-glow mm-glow--cyan p-8 text-center group">
           <DnaHelixBackdrop color="cyan" opacity={0.20} motionVariant="fluid" seed="design-empty" />
