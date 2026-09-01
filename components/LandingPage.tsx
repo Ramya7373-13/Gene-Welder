@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Archive,
   ArrowRight,
   BarChart3,
   BookOpen,
@@ -44,6 +45,15 @@ const modules = [
     meta: 'Used in clinical labs',
     icon: Network,
     tone: 'violet',
+  },
+  {
+    tab: 'archive',
+    title: 'DNA Archive Lab',
+    description: 'Encode files into DNA-like sequences, simulate channel errors, and verify recovery.',
+    meta: 'In-silico archival simulator',
+    icon: Archive,
+    tone: 'cyan',
+    badge: 'NEW',
   },
   {
     tab: null,
