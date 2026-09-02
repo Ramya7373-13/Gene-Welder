@@ -38,6 +38,7 @@ const grokClient = process.env.XAI_API_KEY
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const startTime = Date.now();
 
 // Multer storage configuration
 const multerStorage = multer.diskStorage({
@@ -192,6 +193,28 @@ app.get('/api/health', async (req, res) => {
   }
 
   return res.json(healthData);
+});
+
+// Lightweight /health endpoint for monitoring (uptime robots, Better Stack, etc.)
+app.get('/health', async (req, res) => {
+  const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+  let dbStatus: 'up' | 'down' = 'down';
+
+  try {
+    if (prisma) {
+      await prisma.$executeRawUnsafe('SELECT 1');
+      dbStatus = 'up';
+    }
+  } catch (error) {
+    dbStatus = 'down';
+  }
+
+  const status = dbStatus === 'up' ? 'ok' : 'degraded';
+  return res.json({
+    status,
+    uptime: uptimeSeconds,
+    db: dbStatus
+  });
 });
 
 app.post('/api/ai/variant-analysis', async (req, res) => {
