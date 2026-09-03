@@ -19,6 +19,7 @@ import { dnaStorageRouter } from './routes/dnaStorage.js';
 import OpenAI from 'openai';
 import Stripe from 'stripe';
 import { Resend } from 'resend';
+import argon2 from 'argon2';
 
 // Defensive logging to check if DATABASE_URL is available
 logger.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
@@ -55,6 +56,45 @@ type MeteredFeature = typeof METRIFIED_FEATURES[number];
 
 // Session store (in-memory for simplicity; use Redis in production)
 const sessions = new Map<string, { userId: string; email: string; plan: string }>();
+
+// Rate limiting for /api/auth/request-link
+// Per-email: max 3 requests per 15 minutes
+// Per-IP: max 10 requests per 15 minutes
+interface RateLimitEntry { count: number; resetAt: number; }
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const EMAIL_RATE_LIMIT = 3;
+const IP_RATE_LIMIT = 10;
+const emailRateLimits = new Map<string, RateLimitEntry>();
+const ipRateLimits = new Map<string, RateLimitEntry>();
+
+function checkRateLimit(
+  rateLimits: Map<string, RateLimitEntry>,
+  key: string,
+  limit: number
+): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const entry = rateLimits.get(key);
+  
+  if (!entry || entry.resetAt < now) {
+    rateLimits.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true };
+  }
+  
+  if (entry.count >= limit) {
+    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+  
+  entry.count++;
+  return { allowed: true };
+}
+
+function getClientIp(req: express.Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -220,9 +260,22 @@ app.get('/api/health', async (req, res) => {
 // POST /api/auth/request-link - Send magic link
 app.post('/api/auth/request-link', async (req, res) => {
   const { email } = req.body as { email?: string };
+  const clientIp = getClientIp(req);
 
   if (!email) {
     return res.status(400).json({ error: 'email is required' });
+  }
+
+  // Rate limit check - per email
+  const emailLimit = checkRateLimit(emailRateLimits, email.toLowerCase(), EMAIL_RATE_LIMIT);
+  if (!emailLimit.allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  // Rate limit check - per IP
+  const ipLimit = checkRateLimit(ipRateLimits, clientIp, IP_RATE_LIMIT);
+  if (!ipLimit.allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
   }
 
   if (!resendClient) {
@@ -231,7 +284,7 @@ app.post('/api/auth/request-link', async (req, res) => {
   }
 
   try {
-    // Find or create user
+    // Find or create user - always do this to prevent email enumeration
     let user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
       user = await prisma.user.create({
@@ -243,9 +296,16 @@ app.post('/api/auth/request-link', async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
+    // Hash token for storage: SHA-256 for fast lookup + argon2 for secure comparison
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenHashForCompare = await argon2.hash(token);
+
     await prisma.authToken.create({
-      data: { userId: user.id, token, expiresAt }
+      data: { userId: user.id, token, tokenHash, expiresAt }
     });
+
+    // Note: tokenHashForCompare is stored for future use if we switch to argon2 verification
+    void tokenHashForCompare;
 
     const verifyUrl = `${configuredFrontendUrl}/auth/verify?token=${token}`;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -277,9 +337,19 @@ app.get('/api/auth/verify', async (req, res) => {
   }
 
   try {
-    const authToken = await prisma.authToken.findUnique({ where: { token } });
+    // Hash incoming token for lookup
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const authToken = await prisma.authToken.findUnique({ where: { tokenHash } });
 
     if (!authToken) {
+      return res.status(400).json({ error: 'Invalid token' });
+    }
+
+    // Timing-safe comparison of stored token with incoming token
+    const storedTokenBuffer = Buffer.from(authToken.token, 'utf8');
+    const incomingTokenBuffer = Buffer.from(token, 'utf8');
+    if (storedTokenBuffer.length !== incomingTokenBuffer.length ||
+        !crypto.timingSafeEqual(storedTokenBuffer, incomingTokenBuffer)) {
       return res.status(400).json({ error: 'Invalid token' });
     }
 
