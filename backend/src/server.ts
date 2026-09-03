@@ -202,8 +202,11 @@ app.get('/health', async (req, res) => {
 
   try {
     if (prisma) {
-      await prisma.$executeRawUnsafe('SELECT 1');
-      dbStatus = 'up';
+      // Bound DB probe to ~2s to avoid hanging on slow/down DB
+      const dbCheck = prisma.$executeRawUnsafe('SELECT 1');
+      const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 2000));
+      const result = await Promise.race([dbCheck, timeout]);
+      dbStatus = result === 'timeout' ? 'down' : 'up';
     }
   } catch (error) {
     dbStatus = 'down';
