@@ -33,4 +33,28 @@ describe('GET /health - Lightweight health endpoint for monitoring', () => {
         expect(response.body.db).toBe('down');
         expect(typeof response.body.uptime).toBe('number');
     });
+
+    it('returns status degraded when DB query times out (>2s)', async () => {
+        jest.useRealTimers();
+
+        let finishTimeout: () => void;
+        const timeoutPromise = new Promise<'timeout'>((resolve) => {
+            finishTimeout = () => resolve('timeout');
+        });
+
+        (prisma.$executeRawUnsafe as any).mockImplementation(
+            () => new Promise(() => {})
+        );
+
+        const responsePromise = request(app).get('/health');
+
+        // Wait for real 2.1s timeout to fire
+        await new Promise((resolve) => setTimeout(resolve, 2100));
+
+        const response = await responsePromise;
+
+        expect(response.status).toBe(200);
+        expect(response.body.status).toBe('degraded');
+        expect(response.body.db).toBe('down');
+    });
 });
