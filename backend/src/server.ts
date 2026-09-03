@@ -55,6 +55,7 @@ const METRIFIED_FEATURES = ['variant_analysis', 'splicing_decode', 'dna_archive_
 type MeteredFeature = typeof METRIFIED_FEATURES[number];
 
 // Session store (in-memory for simplicity; use Redis in production)
+const startTime = Date.now();
 const sessions = new Map<string, { userId: string; email: string; plan: string }>();
 
 // Rate limiting for /api/auth/request-link
@@ -253,6 +254,30 @@ app.get('/api/health', async (req, res) => {
   }
 
   return res.json(healthData);
+});
+
+// Lightweight /health endpoint for monitoring (uptime robots, Better Stack, etc.)
+app.get('/health', async (req, res) => {
+  const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+  let dbStatus: 'up' | 'down' = 'down';
+
+  try {
+    if (prisma) {
+      const dbCheck = prisma.$executeRawUnsafe('SELECT 1');
+      const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 2000));
+      const result = await Promise.race([dbCheck, timeout]);
+      dbStatus = result === 'timeout' ? 'down' : 'up';
+    }
+  } catch (error) {
+    dbStatus = 'down';
+  }
+
+  const status = dbStatus === 'up' ? 'ok' : 'degraded';
+  return res.json({
+    status,
+    uptime: uptimeSeconds,
+    db: dbStatus
+  });
 });
 
 // ==================== AUTH ROUTES ====================
