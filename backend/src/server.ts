@@ -50,13 +50,121 @@ const resendClient = process.env.RESEND_API_KEY
 
 const SESSION_COOKIE_NAME = 'mm_session';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_LAST_SEEN_THROTTLE_MS = 60 * 1000; // 1 minute
 const FREE_USAGE_LIMIT = 2;
 const METRIFIED_FEATURES = ['variant_analysis', 'splicing_decode', 'dna_archive_lab', 'compensatory_design'] as const;
 type MeteredFeature = typeof METRIFIED_FEATURES[number];
 
 // Session store (in-memory for simplicity; use Redis in production)
 const startTime = Date.now();
-const sessions = new Map<string, { userId: string; email: string; plan: string }>();
+
+// Session signing: HMAC-SHA256(sessionId, SESSION_SECRET)
+function signSession(sessionId: string): string {
+  const hmac = crypto.createHmac('sha256', SESSION_SECRET);
+  hmac.update(sessionId);
+  return hmac.digest('hex');
+}
+
+function verifySessionSignature(sessionId: string, signature: string): boolean {
+  const expected = signSession(sessionId);
+  if (signature.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+interface DBSession {
+  userId: string;
+  email: string;
+  plan: string;
+  lastSeenAt: Date | null;
+  revokedAt: Date | null;
+  expiresAt: Date;
+}
+
+// lastSeenAt throttle: track when we last updated per session
+const lastSeenTracker = new Map<string, number>();
+
+// Eviction: delete expired/revoked sessions older than grace period (lazy, on auth requests)
+let lastEvictionTime = 0;
+const EVICTION_GRACE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+async function evictExpiredSessions(): Promise<void> {
+  const now = Date.now();
+  if (now - lastEvictionTime < EVICTION_GRACE_MS) return;
+  lastEvictionTime = now;
+
+  const graceAgo = new Date(now - EVICTION_GRACE_MS);
+  try {
+    await prisma.session.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: graceAgo } },
+          { revokedAt: { lt: graceAgo } }
+        ]
+      }
+    });
+  } catch (error) {
+    logger.error('Session eviction error:', error);
+  }
+}
+
+async function getSessionFromCookie(req: express.Request): Promise<DBSession | null> {
+  // Trigger lazy eviction occasionally
+  evictExpiredSessions().catch(() => {});
+
+  const cookieValue = req.cookies[SESSION_COOKIE_NAME];
+  if (!cookieValue || typeof cookieValue !== 'string') return null;
+
+  // Cookie value is "sessionId.signature"
+  const parts = cookieValue.split('.');
+  if (parts.length !== 2) return null;
+
+  const [sessionId, signature] = parts;
+  if (!sessionId || !signature) return null;
+
+  // Verify HMAC signature
+  if (!verifySessionSignature(sessionId, signature)) return null;
+
+  // Hash sessionId for DB lookup (follows same convention as AuthToken)
+  const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+
+  const dbSession = await prisma.session.findUnique({ where: { sessionHash } });
+  if (!dbSession) return null;
+
+  // Check revoked
+  if (dbSession.revokedAt) return null;
+
+  // Check expired
+  if (dbSession.expiresAt < new Date()) return null;
+
+  // Load user for email/plan
+  const user = await prisma.user.findUnique({ where: { id: dbSession.userId } });
+  if (!user) return null;
+
+  // Throttled lastSeenAt update (not more than once per minute)
+  const now = Date.now();
+  const lastSeen = lastSeenTracker.get(sessionId) || 0;
+  if (now - lastSeen > SESSION_LAST_SEEN_THROTTLE_MS) {
+    lastSeenTracker.set(sessionId, now);
+    prisma.session.update({
+      where: { id: dbSession.id },
+      data: { lastSeenAt: new Date() }
+    }).catch(() => {});
+  }
+
+  return {
+    userId: user.id,
+    email: user.email,
+    plan: user.plan,
+    lastSeenAt: dbSession.lastSeenAt,
+    revokedAt: dbSession.revokedAt,
+    expiresAt: dbSession.expiresAt
+  };
+}
 
 // Rate limiting for /api/auth/request-link
 // Per-email: max 3 requests per 15 minutes
@@ -392,20 +500,29 @@ app.get('/api/auth/verify', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Create session
-    const sessionId = crypto.randomBytes(32).toString('hex');
-    sessions.set(sessionId, {
-      userId: user.id,
-      email: user.email,
-      plan: user.plan
+    // Create persistent session
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        sessionHash,
+        expiresAt
+      }
     });
 
+    // Sign sessionId with HMAC for tamper-proof cookie
+    const signature = signSession(sessionToken);
+    const cookieValue = `${sessionToken}.${signature}`;
+
     // Set session cookie
-    res.cookie(SESSION_COOKIE_NAME, sessionId, {
+    res.cookie(SESSION_COOKIE_NAME, cookieValue, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: SESSION_TTL_MS
     });
 
     return res.json({
@@ -418,10 +535,19 @@ app.get('/api/auth/verify', async (req, res) => {
 });
 
 // POST /api/auth/logout - Clear session
-app.post('/api/auth/logout', (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (sessionId) {
-    sessions.delete(sessionId);
+app.post('/api/auth/logout', async (req, res) => {
+  const cookieValue = req.cookies[SESSION_COOKIE_NAME];
+  if (cookieValue && typeof cookieValue === 'string') {
+    const parts = cookieValue.split('.');
+    if (parts.length === 2) {
+      const [sessionId] = parts;
+      const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+      // Mark as revoked instead of deleting immediately
+      await prisma.session.updateMany({
+        where: { sessionHash, revokedAt: null },
+        data: { revokedAt: new Date() }
+      }).catch(() => {});
+    }
   }
   res.clearCookie(SESSION_COOKIE_NAME);
   return res.json({ message: 'Logged out' });
@@ -429,14 +555,9 @@ app.post('/api/auth/logout', (req, res) => {
 
 // GET /api/auth/me - Get current user
 app.get('/api/auth/me', async (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const session = sessions.get(sessionId);
+  const session = await getSessionFromCookie(req);
   if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
+    return res.status(401).json({ error: 'Not authenticated' });
   }
 
   return res.json({
@@ -516,14 +637,9 @@ async function checkUsage(userId: string, feature: MeteredFeature): Promise<{ al
 
 // GET /api/usage - Get usage for current user
 app.get('/api/usage', async (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const session = sessions.get(sessionId);
+  const session = await getSessionFromCookie(req);
   if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
+    return res.status(401).json({ error: 'Not authenticated' });
   }
 
   const usage: Record<string, { used: number; remaining: number; limit: number }> = {};
@@ -547,14 +663,9 @@ app.get('/api/usage', async (req, res) => {
 
 // POST /api/stripe/checkout - Create Stripe Checkout session
 app.post('/api/stripe/checkout', async (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const session = sessions.get(sessionId);
+  const session = await getSessionFromCookie(req);
   if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
+    return res.status(401).json({ error: 'Not authenticated' });
   }
 
   if (!stripeClient || !process.env.STRIPE_PRICE_ID) {
@@ -681,14 +792,9 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
   }
 
   // Auth check
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const session = sessions.get(sessionId);
+  const session = await getSessionFromCookie(req);
   if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
+    return res.status(401).json({ error: 'Not authenticated' });
   }
 
   // Usage metering - fail-closed (atomic reservation)
@@ -828,10 +934,8 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
   if (!gene || !variant) return res.status(400).json({ error: 'gene and variant are required' });
 
   // Auth check
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-  const session = sessions.get(sessionId);
-  if (!session) return res.status(401).json({ error: 'Session expired' });
+  const session = await getSessionFromCookie(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
   // Usage metering - fail-closed (atomic reservation)
   const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
@@ -940,10 +1044,8 @@ app.post('/api/ai/grok-validation', async (req, res) => {
   }
 
   // Auth check
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-  const session = sessions.get(sessionId);
-  if (!session) return res.status(401).json({ error: 'Session expired' });
+  const session = await getSessionFromCookie(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
   // Usage metering - fail-closed (atomic reservation)
   const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
@@ -1938,10 +2040,8 @@ app.post('/api/analyses', async (req, res) => {
     const { gene, variant, ...analysisData } = req.body;
 
     // Auth check - use session userId
-    const sessionId = req.cookies[SESSION_COOKIE_NAME];
-    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-    const session = sessions.get(sessionId);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
     const analysis = await prisma.analysis.create({
       data: {
@@ -1961,10 +2061,8 @@ app.post('/api/analyses', async (req, res) => {
 app.get('/api/analyses', async (req, res) => {
   try {
     // Auth check - use session userId
-    const sessionId = req.cookies[SESSION_COOKIE_NAME];
-    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-    const session = sessions.get(sessionId);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
     const analyses = await prisma.analysis.findMany({
       where: { userId: session.userId },
@@ -2041,10 +2139,8 @@ app.post('/api/splicing', async (req, res) => {
     const { analysisId, gene, variant, ...splicingData } = req.body;
 
     // Auth check
-    const sessionId = req.cookies[SESSION_COOKIE_NAME];
-    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-    const session = sessions.get(sessionId);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
     // Usage metering - fail-closed (atomic reservation)
     const usageCheck = await reserveUsage(session.userId, 'splicing_decode');

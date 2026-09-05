@@ -207,6 +207,179 @@ describe('Stripe Webhook Raw Body', () => {
   });
 });
 
+describe('Persistent DB Sessions', () => {
+  let cryptoModule: typeof import('crypto');
+  let originalPrisma: any;
+
+  beforeAll(async () => {
+    cryptoModule = await import('crypto');
+  });
+
+  beforeEach(() => {
+    originalPrisma = (prisma as any).user;
+  });
+
+  afterEach(() => {
+    (prisma as any).user = originalPrisma;
+    jest.restoreAllMocks();
+  });
+
+  function signSession(sessionId: string, secret: string): string {
+    return cryptoModule.createHmac('sha256', secret).update(sessionId).digest('hex');
+  }
+
+  function makeSignedCookie(sessionId: string, secret: string = 'dev-secret-change-in-production'): string {
+    const sig = signSession(sessionId, secret);
+    return `${sessionId}.${sig}`;
+  }
+
+  function hashSessionToken(token: string): string {
+    return cryptoModule.createHash('sha256').update(token).digest('hex');
+  }
+
+  it('(a) signed cookie is issued on verify and signature is validated', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const sessionHash = hashSessionToken(sessionToken);
+
+    const mockUser = { id: 'test-user-id', email: 'test@example.com', plan: 'free' };
+    const mockSession = {
+      id: 'session-id',
+      userId: mockUser.id,
+      sessionHash,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      lastSeenAt: null,
+      revokedAt: null,
+      createdAt: new Date()
+    };
+
+    // Mock user lookup
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(mockUser as any);
+
+    // Mock session create and findUnique
+    jest.spyOn(prisma.session, 'create').mockResolvedValue(mockSession as any);
+    jest.spyOn(prisma.session, 'findUnique').mockResolvedValue(mockSession as any);
+
+    // Mock auth token lookup and update
+    const mockTokenHash = hashSessionToken(sessionToken);
+    const mockAuthToken = {
+      id: 'token-id',
+      userId: mockUser.id,
+      tokenHash: mockTokenHash,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      usedAt: null
+    };
+    jest.spyOn(prisma.authToken, 'findUnique').mockResolvedValue(mockAuthToken as any);
+    jest.spyOn(prisma.authToken, 'update').mockResolvedValue({ ...mockAuthToken, usedAt: new Date() } as any);
+
+    // Call verify endpoint
+    const response = await request(app)
+      .get('/api/auth/verify')
+      .query({ token: sessionToken });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['set-cookie']).toBeDefined();
+
+    // Cookie should be "sessionId.signature" format
+    const cookies = response.headers['set-cookie'] as unknown as string[];
+    expect(cookies.length).toBeGreaterThan(0);
+
+    const sessionCookie = cookies.find(c => c.includes('mm_session='));
+    expect(sessionCookie).toBeDefined();
+
+    // Extract sessionId.signature from cookie
+    const match = sessionCookie?.match(/mm_session=([^;]+)/);
+    expect(match).toBeDefined();
+    const cookieValue = match?.[1];
+
+    // Verify format is sessionId.signature
+    expect(cookieValue?.split('.').length).toBe(2);
+
+    // Verify session was created with correct data
+    expect(prisma.session.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: mockUser.id,
+        sessionHash: expect.any(String),
+        expiresAt: expect.any(Date)
+      })
+    });
+  });
+
+  it('(b) an expired session returns 401', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const sessionHash = hashSessionToken(sessionToken);
+    const signedCookie = makeSignedCookie(sessionToken);
+
+    // Mock session lookup returning an EXPIRED session
+    jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+      id: 'session-id',
+      userId: 'test-user-id',
+      sessionHash,
+      expiresAt: new Date(Date.now() - 1000), // Expired
+      lastSeenAt: null,
+      revokedAt: null,
+      createdAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000)
+    } as any);
+
+    // Mock user lookup
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      plan: 'free'
+    } as any);
+
+    // Call /api/auth/me with the expired session cookie
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', `mm_session=${signedCookie}`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('(c) a revoked (logged-out) session returns 401', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const sessionHash = hashSessionToken(sessionToken);
+    const signedCookie = makeSignedCookie(sessionToken);
+
+    // Mock session lookup returning a REVOKED session
+    jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+      id: 'session-id',
+      userId: 'test-user-id',
+      sessionHash,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      lastSeenAt: null,
+      revokedAt: new Date(Date.now() - 1000), // Revoked
+      createdAt: new Date()
+    } as any);
+
+    // Mock user lookup
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      plan: 'free'
+    } as any);
+
+    // Call /api/auth/me with the revoked session cookie
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', `mm_session=${signedCookie}`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('(d) a tampered cookie signature is rejected', async () => {
+    // Create a valid session token but tamper with the signature
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const tamperedSignature = 'tampered' + 'a'.repeat(56); // Wrong signature format
+
+    // Call /api/auth/me with a tampered cookie
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', `mm_session=${sessionToken}.${tamperedSignature}`);
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('Usage Metering Race Condition Fix', () => {
   let original$transaction: any;
 
@@ -247,9 +420,9 @@ describe('Usage Metering Race Condition Fix', () => {
     const mockTransaction = async <T>(callback: (tx: any) => Promise<T>): Promise<T> => {
       txCallCount++;
       const mockTx = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(null),
+        $executeRawUnsafe: jest.fn<() => Promise<null>>().mockResolvedValue(null),
         usageEvent: {
-          count: jest.fn().mockImplementation(async () => usageStore.length),
+          count: jest.fn<() => Promise<number>>().mockImplementation(async () => usageStore.length),
           create: jest.fn().mockImplementation(async (data: any) => {
             const record = { id: `event-${usageStore.length + 1}`, ...data };
             usageStore.push(record);
@@ -299,9 +472,9 @@ describe('Usage Metering Race Condition Fix', () => {
 
     const mockTransaction = async <T>(callback: (tx: any) => Promise<T>): Promise<T> => {
       const mockTx = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(null),
+        $executeRawUnsafe: jest.fn<() => Promise<null>>().mockResolvedValue(null),
         usageEvent: {
-          count: jest.fn().mockResolvedValue(0),
+          count: jest.fn<() => Promise<number>>().mockResolvedValue(0),
           create: jest.fn().mockImplementation(async (data: any) => {
             txUsageEventCreateCalled = true;
             return { id: 'event-1', ...data };

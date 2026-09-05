@@ -27,6 +27,7 @@ model User {
   proteinStructures   ProteinStructure[]
   riskAssessments     RiskAssessment[]
   authTokens          AuthToken[]
+  sessions            Session[]
   subscriptions       Subscription[]
   usageEvents         UsageEvent[]
 
@@ -563,6 +564,24 @@ model AuthToken {
   @@index([tokenHash])
   @@index([userId])
   @@map("auth_tokens")
+}
+
+// Persistent sessions for authenticated users
+// sessionHash: SHA-256 of session token for DB lookup - token itself is NEVER stored
+// Cookie value is "sessionId.signature" where signature = HMAC-SHA256(sessionId, SESSION_SECRET)
+model Session {
+  id          String    @id @default(cuid())
+  userId      String
+  sessionHash String    @unique // SHA-256 of session token - the only stored credential
+  expiresAt   DateTime
+  lastSeenAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
 }
 
 // Subscriptions for Stripe billing
