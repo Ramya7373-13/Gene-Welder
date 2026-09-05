@@ -674,3 +674,150 @@ describe('Usage Metering Race Condition Fix', () => {
     expect(result.plan).toBe('free');
   });
 });
+
+describe('DB Error Handling - routes return 500, not crash', () => {
+  let cryptoModule: typeof import('crypto');
+
+  beforeAll(async () => {
+    cryptoModule = await import('crypto');
+  });
+
+  function signSession(sessionId: string, secret: string): string {
+    return cryptoModule.createHmac('sha256', secret).update(sessionId).digest('hex');
+  }
+
+  function makeSignedCookie(sessionId: string, secret: string = 'dev-only-secret-never-in-production'): string {
+    const sig = signSession(sessionId, secret);
+    return `${sessionId}.${sig}`;
+  }
+
+  function hashSessionToken(token: string): string {
+    return cryptoModule.createHash('sha256').update(token).digest('hex');
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('GET /api/usage returns 500 when DB fails during session lookup', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const signedCookie = makeSignedCookie(sessionToken);
+
+    jest.spyOn(prisma.session, 'findUnique').mockRejectedValue(new Error('DB connection failed'));
+
+    const response = await request(app)
+      .get('/api/usage')
+      .set('Cookie', `mm_session=${signedCookie}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Service temporarily unavailable');
+  });
+
+  it('POST /api/ai/variant-analysis returns 500 when DB fails during session lookup', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const signedCookie = makeSignedCookie(sessionToken);
+
+    jest.spyOn(prisma.session, 'findUnique').mockRejectedValue(new Error('DB connection failed'));
+
+    const response = await request(app)
+      .post('/api/ai/variant-analysis')
+      .set('Cookie', `mm_session=${signedCookie}`)
+      .send({ gene: 'BRCA1', variant: 'c.524G>A' });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Service temporarily unavailable');
+  });
+
+  it('POST /api/ai/variant-analysis returns 500 when DB fails during reserveUsage', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const sessionHash = hashSessionToken(sessionToken);
+    const signedCookie = makeSignedCookie(sessionToken);
+
+    jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+      id: 'session-id',
+      userId: 'test-user-id',
+      sessionHash,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      lastSeenAt: null,
+      revokedAt: null,
+      createdAt: new Date()
+    } as any);
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      plan: 'free'
+    } as any);
+    jest.spyOn(prisma.session, 'update').mockResolvedValue({} as any);
+    (prisma as any).$transaction = async () => { throw new Error('DB transaction failed'); };
+
+    const response = await request(app)
+      .post('/api/ai/variant-analysis')
+      .set('Cookie', `mm_session=${signedCookie}`)
+      .send({ gene: 'BRCA1', variant: 'c.524G>A' });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Service temporarily unavailable');
+  });
+
+  it('POST /api/ai/chat returns 500 when DB fails during reserveUsage', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const sessionHash = hashSessionToken(sessionToken);
+    const signedCookie = makeSignedCookie(sessionToken);
+
+    jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+      id: 'session-id',
+      userId: 'test-user-id',
+      sessionHash,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      lastSeenAt: null,
+      revokedAt: null,
+      createdAt: new Date()
+    } as any);
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      plan: 'free'
+    } as any);
+    jest.spyOn(prisma.session, 'update').mockResolvedValue({} as any);
+    (prisma as any).$transaction = async () => { throw new Error('DB transaction failed'); };
+
+    const response = await request(app)
+      .post('/api/ai/chat')
+      .set('Cookie', `mm_session=${signedCookie}`)
+      .send({ message: 'Hello' });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Service temporarily unavailable');
+  });
+
+  it('POST /api/splicing returns 500 when DB fails during reserveUsage', async () => {
+    const sessionToken = cryptoModule.randomBytes(32).toString('hex');
+    const sessionHash = hashSessionToken(sessionToken);
+    const signedCookie = makeSignedCookie(sessionToken);
+
+    jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+      id: 'session-id',
+      userId: 'test-user-id',
+      sessionHash,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      lastSeenAt: null,
+      revokedAt: null,
+      createdAt: new Date()
+    } as any);
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'test-user-id',
+      email: 'test@example.com',
+      plan: 'free'
+    } as any);
+    jest.spyOn(prisma.session, 'update').mockResolvedValue({} as any);
+    (prisma as any).$transaction = async () => { throw new Error('DB transaction failed'); };
+
+    const response = await request(app)
+      .post('/api/splicing')
+      .set('Cookie', `mm_session=${signedCookie}`)
+      .send({ gene: 'BRCA1', variant: 'c.524G>A', analysisId: 'anal-1' });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Failed to create splicing analysis');
+  });
+});

@@ -590,14 +590,18 @@ app.post('/api/auth/logout', async (req, res) => {
 
 // GET /api/auth/me - Get current user
 app.get('/api/auth/me', async (req, res) => {
-  const session = await getSessionFromCookie(req);
-  if (!session) {
-    return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    return res.json({
+      user: { id: session.userId, email: session.email, plan: session.plan }
+    });
+  } catch (error) {
+    logger.error('auth/me error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
-
-  return res.json({
-    user: { id: session.userId, email: session.email, plan: session.plan }
-  });
 });
 
 // ==================== USAGE METERING ====================
@@ -672,9 +676,15 @@ async function checkUsage(userId: string, feature: MeteredFeature): Promise<{ al
 
 // GET /api/usage - Get usage for current user
 app.get('/api/usage', async (req, res) => {
-  const session = await getSessionFromCookie(req);
-  if (!session) {
-    return res.status(401).json({ error: 'Not authenticated' });
+  let session;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+  } catch (error) {
+    logger.error('usage auth error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 
   const usage: Record<string, { used: number; remaining: number; limit: number }> = {};
@@ -698,9 +708,15 @@ app.get('/api/usage', async (req, res) => {
 
 // POST /api/stripe/checkout - Create Stripe Checkout session
 app.post('/api/stripe/checkout', async (req, res) => {
-  const session = await getSessionFromCookie(req);
-  if (!session) {
-    return res.status(401).json({ error: 'Not authenticated' });
+  let session;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+  } catch (error) {
+    logger.error('checkout auth error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 
   if (!stripeClient || !process.env.STRIPE_PRICE_ID) {
@@ -826,14 +842,20 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
 
-  // Auth check
-  const session = await getSessionFromCookie(req);
-  if (!session) {
-    return res.status(401).json({ error: 'Not authenticated' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    usageCheck = await reserveUsage(session.userId, 'variant_analysis');
+  } catch (error) {
+    logger.error('variant-analysis auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 
-  // Usage metering - fail-closed (atomic reservation)
-  const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -947,12 +969,18 @@ app.post('/api/ai/chat', async (req, res) => {
 
   if (!message) return res.status(400).json({ error: 'message is required' });
 
-  // Auth check for chat (it's a paid AI feature)
-  const session = await getSessionFromCookie(req);
-  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'ai_chat');
+  } catch (error) {
+    logger.error('chat auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
 
-  // Usage metering - fail-closed
-  const usageCheck = await reserveUsage(session.userId, 'ai_chat');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -985,12 +1013,18 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
   const { gene, variant } = req.body as { gene?: string; variant?: string };
   if (!gene || !variant) return res.status(400).json({ error: 'gene and variant are required' });
 
-  // Auth check
-  const session = await getSessionFromCookie(req);
-  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'variant_analysis');
+  } catch (error) {
+    logger.error('clinical-analysis auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
 
-  // Usage metering - fail-closed (atomic reservation)
-  const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -1012,7 +1046,7 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
     });
     if (!response.text) return res.status(502).json({ error: 'Gemini returned an empty response' });
 
-    return res.json({ ...JSON.parse(response.text), variantId: `${gene}-${variant}`, gene, timestamp: Date.now(), source: 'API', remaining: usageCheck.remaining - 1 });
+    return res.json({ ...JSON.parse(response.text), variantId: `${gene}-${variant}`, gene, timestamp: Date.now(), source: 'API', remaining: usageCheck.remaining });
   } catch (error) {
     logger.error('Gemini clinical analysis failed:', error);
     return res.status(502).json({ error: 'Gemini clinical analysis failed' });
@@ -1028,12 +1062,18 @@ app.post('/api/ai/clinical-summary', async (req, res) => {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
 
-  // Auth check
-  const session = await getSessionFromCookie(req);
-  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'clinical_summary');
+  } catch (error) {
+    logger.error('clinical-summary auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
 
-  // Usage metering - fail-closed
-  const usageCheck = await reserveUsage(session.userId, 'clinical_summary');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -1113,12 +1153,18 @@ app.post('/api/ai/grok-validation', async (req, res) => {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
 
-  // Auth check
-  const session = await getSessionFromCookie(req);
-  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'variant_analysis');
+  } catch (error) {
+    logger.error('grok-validation auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
 
-  // Usage metering - fail-closed (atomic reservation)
-  const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -1136,8 +1182,7 @@ app.post('/api/ai/grok-validation', async (req, res) => {
   const cacheKey = `grok:${gene}:${variant}`.toUpperCase();
   const cached = grokCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GROK_CACHE_TTL) {
-    // Slot already reserved via reserveUsage() at route entry
-    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining - 1 });
+    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining });
   }
 
   const prompt = `You are a structural biology and molecular genetics expert performing an independent consensus validation of the mutation ${gene} ${variant}.
