@@ -54,7 +54,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SESSION_LAST_SEEN_THROTTLE_MS = 60 * 1000; // 1 minute
 const FREE_USAGE_LIMIT = 2;
-const METRIFIED_FEATURES = ['variant_analysis', 'splicing_decode', 'dna_archive_lab', 'compensatory_design'] as const;
+const METRIFIED_FEATURES = ['variant_analysis', 'splicing_decode', 'ai_chat', 'clinical_summary'] as const;
 type MeteredFeature = typeof METRIFIED_FEATURES[number];
 
 // Session store (in-memory for simplicity; use Redis in production)
@@ -946,6 +946,23 @@ app.post('/api/ai/chat', async (req, res) => {
   };
 
   if (!message) return res.status(400).json({ error: 'message is required' });
+
+  // Auth check for chat (it's a paid AI feature)
+  const session = await getSessionFromCookie(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
+  // Usage metering - fail-closed
+  const usageCheck = await reserveUsage(session.userId, 'ai_chat');
+  if (!usageCheck.allowed) {
+    return res.status(402).json({
+      error: 'Usage limit exceeded',
+      code: 'PAYWALL',
+      plan: session.plan,
+      message: `Free plan limit reached. Upgrade to Pro for unlimited AI chat.`,
+      upgradeUrl: `${configuredFrontendUrl}/settings`
+    });
+  }
+
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'Gemini integration is not configured' });
 
   try {
@@ -957,7 +974,7 @@ app.post('/api/ai/chat', async (req, res) => {
         { role: 'user', parts: [{ text: `Context:\n${context || 'No variant context'}\n\nQuestion:\n${message}` }] }
       ]
     });
-    return res.json({ text: response.text || '', source: 'API' });
+    return res.json({ text: response.text || '', source: 'API', remaining: usageCheck.remaining });
   } catch (error) {
     logger.error('Gemini chat failed:', error);
     return res.status(502).json({ error: 'Gemini chat failed' });
@@ -1010,6 +1027,23 @@ app.post('/api/ai/clinical-summary', async (req, res) => {
   if (!gene || !variant) {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
+
+  // Auth check
+  const session = await getSessionFromCookie(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
+  // Usage metering - fail-closed
+  const usageCheck = await reserveUsage(session.userId, 'clinical_summary');
+  if (!usageCheck.allowed) {
+    return res.status(402).json({
+      error: 'Usage limit exceeded',
+      code: 'PAYWALL',
+      plan: session.plan,
+      message: `Free plan limit reached. Upgrade to Pro for unlimited clinical summaries.`,
+      upgradeUrl: `${configuredFrontendUrl}/settings`
+    });
+  }
+
   if (!process.env.GEMINI_API_KEY) {
     return res.status(503).json({ error: 'Gemini integration is not configured' });
   }
@@ -1017,7 +1051,7 @@ app.post('/api/ai/clinical-summary', async (req, res) => {
   const cacheKey = `summary:${gene}:${variant}`.toUpperCase();
   const cached = geminiCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GEMINI_CACHE_TTL) {
-    return res.json({ ...cached.data, source: 'CACHE' });
+    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining });
   }
 
   try {
@@ -1057,7 +1091,8 @@ Rules:
       alphaMissense,
       gene,
       variant,
-      source: 'API'
+      source: 'API',
+      remaining: usageCheck.remaining
     };
     geminiCache.set(cacheKey, { timestamp: Date.now(), data: payload });
     return res.json(payload);

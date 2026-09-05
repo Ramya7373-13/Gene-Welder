@@ -164,13 +164,29 @@ describe('Health Endpoint HTTP Interface', () => {
 });
 
 describe('Quota Response Shape', () => {
-  it('returns 402 with PAYWALL code when quota exceeded', async () => {
+  it('returns 402 with PAYWALL code when quota exceeded on /api/ai/variant-analysis', async () => {
     const response = await request(app)
       .post('/api/ai/variant-analysis')
       .set('Cookie', 'mm_session=nonexistent-session')
       .send({ gene: 'BRCA1', variant: 'c.524G>A' });
 
     expect([401, 402]).toContain(response.status);
+  });
+
+  it('returns 401 when not authenticated on /api/ai/chat', async () => {
+    const response = await request(app)
+      .post('/api/ai/chat')
+      .send({ message: 'test' });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('returns 401 when not authenticated on /api/ai/clinical-summary', async () => {
+    const response = await request(app)
+      .post('/api/ai/clinical-summary')
+      .send({ gene: 'BRCA1', variant: 'c.524G>A' });
+
+    expect(response.status).toBe(401);
   });
 });
 
@@ -598,5 +614,63 @@ describe('Usage Metering Race Condition Fix', () => {
     await reserveUsage(userId, feature);
 
     expect(txUsageEventCreateCalled).toBe(true);
+  });
+
+  it('reserveUsage works with ai_chat feature key', async () => {
+    const userId = 'test-user-ai-chat';
+    const feature = 'ai_chat';
+
+    const mockTransaction = async <T>(callback: (tx: any) => Promise<T>): Promise<T> => {
+      const mockTx = {
+        $executeRawUnsafe: jest.fn<() => Promise<null>>().mockResolvedValue(null),
+        usageEvent: {
+          count: jest.fn<() => Promise<number>>().mockResolvedValue(0),
+          create: jest.fn().mockImplementation((data: any) => Promise.resolve({ id: 'event-1', ...data }))
+        }
+      };
+      return callback(mockTx);
+    };
+
+    (prisma as any).$transaction = mockTransaction;
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: userId,
+      email: 'test@example.com',
+      plan: 'free'
+    });
+
+    const { reserveUsage } = await import('../../src/server.js');
+    const result = await reserveUsage(userId, feature);
+
+    expect(result.allowed).toBe(true);
+    expect(result.plan).toBe('free');
+  });
+
+  it('reserveUsage works with clinical_summary feature key', async () => {
+    const userId = 'test-user-clinical-summary';
+    const feature = 'clinical_summary';
+
+    const mockTransaction = async <T>(callback: (tx: any) => Promise<T>): Promise<T> => {
+      const mockTx = {
+        $executeRawUnsafe: jest.fn<() => Promise<null>>().mockResolvedValue(null),
+        usageEvent: {
+          count: jest.fn<() => Promise<number>>().mockResolvedValue(0),
+          create: jest.fn().mockImplementation((data: any) => Promise.resolve({ id: 'event-1', ...data }))
+        }
+      };
+      return callback(mockTx);
+    };
+
+    (prisma as any).$transaction = mockTransaction;
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: userId,
+      email: 'test@example.com',
+      plan: 'free'
+    });
+
+    const { reserveUsage } = await import('../../src/server.js');
+    const result = await reserveUsage(userId, feature);
+
+    expect(result.allowed).toBe(true);
+    expect(result.plan).toBe('free');
   });
 });
