@@ -1,7 +1,8 @@
 import request from 'supertest';
-import { app, prisma, assertSecureConfig } from '../../src/server.js';
+import { app, prisma, assertSecureConfig, getClientIp } from '../../src/server.js';
 import Stripe from 'stripe';
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import express from 'express';
 
 describe('AssertSecureConfig - SESSION_SECRET Guard', () => {
   const originalNodeEnv = process.env.NODE_ENV;
@@ -46,6 +47,62 @@ describe('AssertSecureConfig - SESSION_SECRET Guard', () => {
     delete process.env.SESSION_SECRET;
 
     expect(() => assertSecureConfig()).not.toThrow();
+  });
+});
+
+describe('Trust Proxy - IP Rate-Limit Spoof Prevention', () => {
+  function createMockRequest(ip: string | undefined, xff: string | undefined): express.Request {
+    return {
+      ip,
+      headers: xff ? { 'x-forwarded-for': xff } : {}
+    } as unknown as express.Request;
+  }
+
+  describe('getClientIp', () => {
+    it('(a) returns req.ip when trust proxy is off (hops=0)', () => {
+      // With trust proxy off, getClientIp just returns req.ip
+      // XFF header should be ignored
+      const mockReq = createMockRequest('192.168.1.100', '10.0.0.1, 203.0.113.50');
+      expect(getClientIp(mockReq)).toBe('192.168.1.100');
+    });
+
+    it('(a) spoofed XFF header is ignored when trust proxy is off', () => {
+      // Attacker tries to spoof IP via XFF, but should be ignored
+      const mockReq = createMockRequest('192.168.1.100', '5.5.5.5');
+      expect(getClientIp(mockReq)).toBe('192.168.1.100');
+    });
+
+    it('(b) returns req.ip when trust proxy is on (1 hop) - single XFF entry', () => {
+      // When trust proxy is on and there's a single XFF entry (as proxy would set),
+      // req.ip should reflect the client IP
+      const mockReq = createMockRequest('10.0.0.1', '203.0.113.50');
+      expect(getClientIp(mockReq)).toBe('10.0.0.1');
+    });
+
+    it('(c) same real address with different spoofed XFF shares bucket when proxy off', () => {
+      // Two requests with different spoofed XFF but same real IP
+      // should get same client IP for rate limiting
+      const mockReq1 = createMockRequest('192.168.1.100', '1.1.1.1');
+      const mockReq2 = createMockRequest('192.168.1.100', '2.2.2.2');
+
+      const ip1 = getClientIp(mockReq1);
+      const ip2 = getClientIp(mockReq2);
+
+      expect(ip1).toBe(ip2); // Both resolve to same IP despite different XFF
+      expect(ip1).toBe('192.168.1.100');
+    });
+
+    it('returns "unknown" when req.ip is undefined', () => {
+      const mockReq = { ip: undefined, headers: {} } as unknown as express.Request;
+      expect(getClientIp(mockReq)).toBe('unknown');
+    });
+  });
+
+  describe('app.set trust proxy configuration', () => {
+    it('default TRUST_PROXY_HOPS is 0 (no proxy)', () => {
+      // Default is 0 - no proxy, XFF is not trusted
+      expect(app.get('trust proxy')).toBe(0);
+    });
   });
 });
 

@@ -226,16 +226,19 @@ function checkRateLimit(
   return { allowed: true };
 }
 
-function getClientIp(req: express.Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.ip || req.socket.remoteAddress || 'unknown';
-}
-
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Trust proxy configuration: read from env, default to 0 (no proxy)
+// When behind a proxy (Vercel, etc.), set TRUST_PROXY_HOPS=1
+// When running directly without proxy, must be 0 to prevent XFF spoofing
+const TRUST_PROXY_HOPS = parseInt(process.env.TRUST_PROXY_HOPS || '0', 10);
+app.set('trust proxy', TRUST_PROXY_HOPS);
+
+// Export for testing
+function getClientIp(req: express.Request): string {
+  return req.ip || 'unknown';
+}
 
 // Multer storage configuration
 const multerStorage = multer.diskStorage({
@@ -2541,4 +2544,4 @@ function calculateRisk(
 }
 
 // End of routes and app definition
-export { prisma, app, reserveUsage };
+export { prisma, app, reserveUsage, getClientIp };
