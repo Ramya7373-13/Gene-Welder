@@ -49,7 +49,8 @@ const resendClient = process.env.RESEND_API_KEY
   : null;
 
 const SESSION_COOKIE_NAME = 'mm_session';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
+// Session secret: required in production, dev fallback only when not production
+const SESSION_SECRET = process.env.SESSION_SECRET;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SESSION_LAST_SEEN_THROTTLE_MS = 60 * 1000; // 1 minute
 const FREE_USAGE_LIMIT = 2;
@@ -59,15 +60,43 @@ type MeteredFeature = typeof METRIFIED_FEATURES[number];
 // Session store (in-memory for simplicity; use Redis in production)
 const startTime = Date.now();
 
+// Assert secure configuration: fail hard in production if SESSION_SECRET is missing
+export function assertSecureConfig(): void {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const secret = process.env.SESSION_SECRET;
+  if (isProduction && !secret) {
+    const error = 'FATAL: SESSION_SECRET environment variable is required in production. Refusing to boot with insecure configuration.';
+    logger.error(error);
+    throw new Error(error);
+  }
+}
+
 // Session signing: HMAC-SHA256(sessionId, SESSION_SECRET)
 function signSession(sessionId: string): string {
-  const hmac = crypto.createHmac('sha256', SESSION_SECRET);
+  const secret = SESSION_SECRET || 'dev-only-secret-never-in-production';
+  const hmac = crypto.createHmac('sha256', secret);
   hmac.update(sessionId);
   return hmac.digest('hex');
 }
 
 function verifySessionSignature(sessionId: string, signature: string): boolean {
-  const expected = signSession(sessionId);
+  const secret = SESSION_SECRET || 'dev-only-secret-never-in-production';
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(sessionId);
+  const expected = hmac.digest('hex');
+  if (signature.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+// Verify with explicit secret (for testing)
+function verifySessionSignatureWithSecret(sessionId: string, signature: string, secret: string): boolean {
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(sessionId);
+  const expected = hmac.digest('hex');
   if (signature.length !== expected.length) return false;
   try {
     return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
@@ -254,6 +283,9 @@ testDbConnection().catch(error => {
   logger.error('Database connection test failed:', error);
   logger.log('Server will continue running without database connection');
 });
+
+// Validate secure configuration at startup - fail closed in production
+assertSecureConfig();
 
 // Middleware
 const configuredFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';

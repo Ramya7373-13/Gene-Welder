@@ -1,7 +1,53 @@
 import request from 'supertest';
-import { app, prisma } from '../../src/server.js';
+import { app, prisma, assertSecureConfig } from '../../src/server.js';
 import Stripe from 'stripe';
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+
+describe('AssertSecureConfig - SESSION_SECRET Guard', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalSessionSecret = process.env.SESSION_SECRET;
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.SESSION_SECRET = originalSessionSecret;
+  });
+
+  it('throws in production when SESSION_SECRET is missing', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.SESSION_SECRET;
+
+    expect(() => assertSecureConfig()).toThrow('FATAL');
+    expect(() => assertSecureConfig()).toThrow('SESSION_SECRET');
+  });
+
+  it('throws in production when SESSION_SECRET is empty', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_SECRET = '';
+
+    expect(() => assertSecureConfig()).toThrow('FATAL');
+  });
+
+  it('does not throw in production when SESSION_SECRET is set', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_SECRET = 'real-production-secret';
+
+    expect(() => assertSecureConfig()).not.toThrow();
+  });
+
+  it('does not throw in development when SESSION_SECRET is missing', () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.SESSION_SECRET;
+
+    expect(() => assertSecureConfig()).not.toThrow();
+  });
+
+  it('does not throw when NODE_ENV is undefined (defaults to dev behavior)', () => {
+    delete process.env.NODE_ENV;
+    delete process.env.SESSION_SECRET;
+
+    expect(() => assertSecureConfig()).not.toThrow();
+  });
+});
 
 describe('Auth HTTP Interface', () => {
   describe('POST /api/auth/request-link', () => {
