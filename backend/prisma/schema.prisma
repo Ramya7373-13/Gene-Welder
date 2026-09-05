@@ -550,14 +550,11 @@ model DnaStorageReport {
 }
 
 // Auth tokens for magic-link authentication
-// token: the plain token sent to user (used for email URL)
-// tokenHash: SHA-256 of token for fast DB lookup
-// NOTE: Any un-expired plaintext tokens become invalid when this ships — acceptable for pre-launch
+// tokenHash: SHA-256 of token for fast DB lookup - token itself is NEVER stored
 model AuthToken {
   id        String   @id @default(cuid())
   userId    String
-  token     String   @unique // plain token - hashed before storage in production
-  tokenHash String   @unique // SHA-256 of token for fast index lookup
+  tokenHash String   @unique // SHA-256 of token - the only stored credential
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime @default(now())

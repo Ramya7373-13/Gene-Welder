@@ -19,7 +19,6 @@ import { dnaStorageRouter } from './routes/dnaStorage.js';
 import OpenAI from 'openai';
 import Stripe from 'stripe';
 import { Resend } from 'resend';
-import argon2 from 'argon2';
 
 // Defensive logging to check if DATABASE_URL is available
 logger.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
@@ -165,6 +164,10 @@ app.use(cors({
   credentials: true
 }));
 app.use(cookieParser());
+
+// Stripe webhook needs raw body - register BEFORE global JSON parser
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -321,16 +324,12 @@ app.post('/api/auth/request-link', async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    // Hash token for storage: SHA-256 for fast lookup + argon2 for secure comparison
+    // Hash token for storage: SHA-256 only - raw token is NEVER stored
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const tokenHashForCompare = await argon2.hash(token);
 
     await prisma.authToken.create({
-      data: { userId: user.id, token, tokenHash, expiresAt }
+      data: { userId: user.id, tokenHash, expiresAt }
     });
-
-    // Note: tokenHashForCompare is stored for future use if we switch to argon2 verification
-    void tokenHashForCompare;
 
     const verifyUrl = `${configuredFrontendUrl}/auth/verify?token=${token}`;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -362,7 +361,7 @@ app.get('/api/auth/verify', async (req, res) => {
   }
 
   try {
-    // Hash incoming token for lookup
+    // Hash incoming token for lookup - token is 256-bit random, sha256 is adequate
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const authToken = await prisma.authToken.findUnique({ where: { tokenHash } });
 
@@ -370,13 +369,7 @@ app.get('/api/auth/verify', async (req, res) => {
       return res.status(400).json({ error: 'Invalid token' });
     }
 
-    // Timing-safe comparison of stored token with incoming token
-    const storedTokenBuffer = Buffer.from(authToken.token, 'utf8');
-    const incomingTokenBuffer = Buffer.from(token, 'utf8');
-    if (storedTokenBuffer.length !== incomingTokenBuffer.length ||
-        !crypto.timingSafeEqual(storedTokenBuffer, incomingTokenBuffer)) {
-      return res.status(400).json({ error: 'Invalid token' });
-    }
+    // Lookup by tokenHash isolates the record - no need for additional comparison
 
     if (authToken.expiresAt < new Date()) {
       return res.status(400).json({ error: 'Token expired' });
@@ -551,7 +544,7 @@ app.post('/api/stripe/checkout', async (req, res) => {
 });
 
 // POST /api/stripe/webhook - Stripe webhook handler
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/api/stripe/webhook', async (req, res) => {
   if (!stripeClient || !process.env.STRIPE_WEBHOOK_SECRET) {
     return res.status(503).json({ error: 'Stripe not configured' });
   }
