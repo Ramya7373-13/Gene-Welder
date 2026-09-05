@@ -29,7 +29,11 @@ export interface Variant {
 export const backendService = {
     // Patients
     async getPatients(): Promise<Patient[]> {
-        const res = await fetch(`${API_BASE}/api/patients`);
+        const res = await fetch(`${API_BASE}/api/patients`, { credentials: 'include' });
+        if (res.status === 401) {
+            const body = await res.json().catch(() => ({}));
+            throw Object.assign(new Error(body.error || 'Not authenticated'), { status: 401 });
+        }
         if (!res.ok) throw new Error('Failed to fetch patients');
         return res.json();
     },
@@ -38,12 +42,9 @@ export const backendService = {
         const res = await fetch(`${API_BASE}/api/patients`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(patient)
         });
-        // Note: We need a POST /api/patients if it doesn't exist, 
-        // but currently /api/variants auto-creates patients.
-        // Let's implement a standalone POST /api/patients for completeness if needed.
-        // For now, we'll use the existing /api/variants logic or add the endpoint.
         return res.json();
     },
 
@@ -52,7 +53,11 @@ export const backendService = {
         const url = patientId
             ? `${API_BASE}/api/variants?patientId=${encodeURIComponent(patientId)}`
             : `${API_BASE}/api/variants`;
-        const res = await fetch(url);
+        const res = await fetch(url, { credentials: 'include' });
+        if (res.status === 401) {
+            const body = await res.json().catch(() => ({}));
+            throw Object.assign(new Error(body.error || 'Not authenticated'), { status: 401 });
+        }
         if (!res.ok) throw new Error('Failed to fetch variants');
         return res.json();
     },
@@ -61,6 +66,7 @@ export const backendService = {
         const res = await fetch(`${API_BASE}/api/variants`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(variant)
         });
         if (!res.ok) throw new Error('Failed to create variant');
@@ -72,6 +78,7 @@ export const backendService = {
         const res = await fetch(`${API_BASE}/api/predictions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(prediction)
         });
         if (!res.ok) throw new Error('Failed to log prediction');
@@ -83,7 +90,11 @@ export const backendService = {
         const url = userId
             ? `${API_BASE}/api/analyses?userId=${encodeURIComponent(userId)}`
             : `${API_BASE}/api/analyses`;
-        const res = await fetch(url);
+        const res = await fetch(url, { credentials: 'include' });
+        if (res.status === 401) {
+            const body = await res.json().catch(() => ({}));
+            throw Object.assign(new Error(body.error || 'Not authenticated'), { status: 401 });
+        }
         if (!res.ok) throw new Error('Failed to fetch history');
         return res.json();
     },
@@ -97,6 +108,7 @@ export const backendService = {
 
         const res = await fetch(`${API_BASE}/api/structures`, {
             method: 'POST',
+            credentials: 'include',
             body: formData
         });
         if (!res.ok) throw new Error('Failed to upload structure');
@@ -105,12 +117,20 @@ export const backendService = {
 
     // Audits
     async getAudits(limit = 10) {
-        const res = await fetch(`${API_BASE}/api/audits?limit=${limit}`);
+        const res = await fetch(`${API_BASE}/api/audits?limit=${limit}`, { credentials: 'include' });
+        if (res.status === 401) {
+            const body = await res.json().catch(() => ({}));
+            throw Object.assign(new Error(body.error || 'Not authenticated'), { status: 401 });
+        }
         return res.json();
     },
 
     async getAuditStats() {
-        const res = await fetch(`${API_BASE}/api/audits/stats`);
+        const res = await fetch(`${API_BASE}/api/audits/stats`, { credentials: 'include' });
+        if (res.status === 401) {
+            const body = await res.json().catch(() => ({}));
+            throw Object.assign(new Error(body.error || 'Not authenticated'), { status: 401 });
+        }
         return res.json();
     },
 

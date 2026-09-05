@@ -55,7 +55,7 @@ const AncestralPathogenicityTimeline: React.FC = () => {
     try {
       // In a real implementation, we would fetch ancestral pathogenicity data
       // For now, we'll simulate data based on existing variants
-      const variantsResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/variants?patientId=${patientId}`);
+      const variantsResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/variants?patientId=${patientId}`, { credentials: 'include' });
       if (!variantsResponse.ok) throw new Error('Failed to fetch variants');
       const variants = await variantsResponse.json();
       

@@ -1506,16 +1506,18 @@ app.post('/api/patients', async (req, res) => {
 
 app.get('/api/patients', async (req, res) => {
   try {
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
     const patients = await prisma.patient.findMany({
       select: {
         id: true,
         patientId: true,
-        name: true,     // ← CRITICAL: Include name!
         createdAt: true
       },
       orderBy: { createdAt: 'desc' }
     });
-    return res.json(patients);
+    return res.json(patients.map((r: any) => redactSensitive(r)));
   } catch (error) {
     logger.error('Error fetching patients:', error);
     return res.status(500).json({ error: 'Failed to fetch patients' });
@@ -1892,6 +1894,9 @@ app.post('/api/variants/mock-ingest', async (req, res) => {
 
 app.get('/api/variants', async (req, res) => {
   try {
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
     const { patientId } = req.query;
     const variants = await prisma.variant.findMany({
       where: patientId ? {
@@ -1899,7 +1904,7 @@ app.get('/api/variants', async (req, res) => {
       } : {},
       orderBy: { id: 'desc' }
     });
-    return res.json(variants);
+    return res.json(variants.map((r: any) => redactSensitive(r)));
   } catch (error) {
     logger.error('Error fetching variants:', error);
     return res.status(500).json({ error: 'Failed to fetch variants' });
@@ -1909,12 +1914,15 @@ app.get('/api/variants', async (req, res) => {
 // Audit routes
 app.get('/api/audits', async (req, res) => {
   try {
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
     const limit = parseInt(req.query.limit as string) || 10;
     const audits = await prisma.auditLog.findMany({
       orderBy: { createdAt: 'desc' },
       take: limit
     });
-    return res.json(audits);
+    return res.json(audits.map((r: any) => redactSensitive(r)));
   } catch (error) {
     logger.error('Error fetching audits:', error);
     return res.status(500).json({ error: 'Failed to fetch audits' });
@@ -1923,6 +1931,10 @@ app.get('/api/audits', async (req, res) => {
 
 app.get('/api/audits/stats', async (req, res) => {
   try {
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    // TODO: restrict to admin role when roles exist
+
     // Note: Prisma 7 $queryRaw requires specific treatment for PostgreSQL types if using strings
     const stats = await prisma.$queryRaw`
       SELECT 
@@ -2216,10 +2228,20 @@ app.get('/api/analyses/:id', async (req, res) => {
 // History routes
 app.post('/api/history', async (req, res) => {
   try {
-    const { userId, analysisId, gene, variant, ...historyData } = req.body;
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { analysisId, gene, variant, ...historyData } = req.body;
+
+    if (analysisId) {
+      const analysis = await prisma.analysis.findUnique({ where: { id: analysisId } });
+      if (!analysis) return res.status(404).json({ error: 'Analysis not found' });
+      if (analysis.userId !== session.userId) return res.status(403).json({ error: 'Forbidden' });
+    }
+
     const history = await prisma.historyRecord.create({
       data: {
-        userId,
+        userId: session.userId,
         analysisId,
         gene,
         variant,
@@ -2235,11 +2257,13 @@ app.post('/api/history', async (req, res) => {
 
 app.get('/api/history/:userId', async (req, res) => {
   try {
-    const { userId } = req.params;
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
     const history = await prisma.historyRecord.findMany({
-      where: { userId },
+      where: { userId: session.userId },
       orderBy: { timestamp: 'desc' },
-      take: 50 // Limit to last 50 records
+      take: 50
     });
     return res.json(history);
   } catch (error) {
