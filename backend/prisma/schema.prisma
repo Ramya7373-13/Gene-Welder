@@ -14,6 +14,7 @@ model User {
   id                  String    @id @default(cuid())
   email               String    @unique
   name                String?
+  plan                String    @default("free")  // "free" or "pro"
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   analyses            Analysis[]
@@ -25,6 +26,9 @@ model User {
   comments            Comment[]
   proteinStructures   ProteinStructure[]
   riskAssessments     RiskAssessment[]
+  authTokens          AuthToken[]
+  subscriptions       Subscription[]
+  usageEvents         UsageEvent[]
 
   @@map("users")
 }
@@ -543,4 +547,48 @@ model DnaStorageReport {
   experiment   DnaStorageExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
 
   @@map("dna_storage_reports")
+}
+
+// Auth tokens for magic-link authentication
+// tokenHash: SHA-256 of token for fast DB lookup - token itself is NEVER stored
+model AuthToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique // SHA-256 of token - the only stored credential
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@map("auth_tokens")
+}
+
+// Subscriptions for Stripe billing
+model Subscription {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  stripeCustomerId     String   @unique
+  stripeSubscriptionId String   @unique
+  plan                 String   // "free" or "pro"
+  status               String   // "active", "canceled", "past_due", etc.
+  currentPeriodEnd     DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// Usage events for metering (free = 2 uses per feature)
+model UsageEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  feature   String   // "variant_analysis", "splicing_decode", "dna_archive_lab", "compensatory_design"
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, feature, createdAt])
+  @@map("usage_events")
 }

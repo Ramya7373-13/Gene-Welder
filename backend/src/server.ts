@@ -3,6 +3,7 @@ import 'dotenv/config';
 
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
 import { logger } from './utils/logger.js';
 import multer from 'multer';
@@ -16,6 +17,8 @@ import { getAlphaMissenseScore } from './utils/alphamissenseUtil.js';
 import { GoogleGenAI } from '@google/genai';
 import { dnaStorageRouter } from './routes/dnaStorage.js';
 import OpenAI from 'openai';
+import Stripe from 'stripe';
+import { Resend } from 'resend';
 
 // Defensive logging to check if DATABASE_URL is available
 logger.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
@@ -36,9 +39,65 @@ const grokClient = process.env.XAI_API_KEY
     })
   : null;
 
+const stripeClient = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+const resendClient = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
+
+const SESSION_COOKIE_NAME = 'mm_session';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
+const FREE_USAGE_LIMIT = 2;
+const METRIFIED_FEATURES = ['variant_analysis', 'splicing_decode', 'dna_archive_lab', 'compensatory_design'] as const;
+type MeteredFeature = typeof METRIFIED_FEATURES[number];
+
+// Session store (in-memory for simplicity; use Redis in production)
+const startTime = Date.now();
+const sessions = new Map<string, { userId: string; email: string; plan: string }>();
+
+// Rate limiting for /api/auth/request-link
+// Per-email: max 3 requests per 15 minutes
+// Per-IP: max 10 requests per 15 minutes
+interface RateLimitEntry { count: number; resetAt: number; }
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const EMAIL_RATE_LIMIT = 3;
+const IP_RATE_LIMIT = 10;
+const emailRateLimits = new Map<string, RateLimitEntry>();
+const ipRateLimits = new Map<string, RateLimitEntry>();
+
+function checkRateLimit(
+  rateLimits: Map<string, RateLimitEntry>,
+  key: string,
+  limit: number
+): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const entry = rateLimits.get(key);
+  
+  if (!entry || entry.resetAt < now) {
+    rateLimits.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true };
+  }
+  
+  if (entry.count >= limit) {
+    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+  
+  entry.count++;
+  return { allowed: true };
+}
+
+function getClientIp(req: express.Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
-const startTime = Date.now();
 
 // Multer storage configuration
 const multerStorage = multer.diskStorage({
@@ -104,6 +163,11 @@ app.use(cors({
   origin: (origin, callback) => callback(null, isAllowedFrontendOrigin(origin) ? origin : false),
   credentials: true
 }));
+app.use(cookieParser());
+
+// Stripe webhook needs raw body - register BEFORE global JSON parser
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -202,7 +266,6 @@ app.get('/health', async (req, res) => {
 
   try {
     if (prisma) {
-      // Bound DB probe to ~2s to avoid hanging on slow/down DB
       const dbCheck = prisma.$executeRawUnsafe('SELECT 1');
       const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 2000));
       const result = await Promise.race([dbCheck, timeout]);
@@ -220,6 +283,351 @@ app.get('/health', async (req, res) => {
   });
 });
 
+// ==================== AUTH ROUTES ====================
+
+// POST /api/auth/request-link - Send magic link
+app.post('/api/auth/request-link', async (req, res) => {
+  const { email } = req.body as { email?: string };
+  const clientIp = getClientIp(req);
+
+  if (!email) {
+    return res.status(400).json({ error: 'email is required' });
+  }
+
+  // Rate limit check - per email
+  const emailLimit = checkRateLimit(emailRateLimits, email.toLowerCase(), EMAIL_RATE_LIMIT);
+  if (!emailLimit.allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  // Rate limit check - per IP
+  const ipLimit = checkRateLimit(ipRateLimits, clientIp, IP_RATE_LIMIT);
+  if (!ipLimit.allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  if (!resendClient) {
+    logger.error('Resend not configured');
+    return res.status(503).json({ error: 'Email service not configured' });
+  }
+
+  try {
+    // Find or create user - always do this to prevent email enumeration
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: { email, plan: 'free' }
+      });
+    }
+
+    // Generate token (15-min TTL)
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Hash token for storage: SHA-256 only - raw token is NEVER stored
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    await prisma.authToken.create({
+      data: { userId: user.id, tokenHash, expiresAt }
+    });
+
+    const verifyUrl = `${configuredFrontendUrl}/auth/verify?token=${token}`;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+
+    await resendClient.emails.send({
+      from: 'MutationMechanic <noreply@mutationmechanic.com>',
+      to: email,
+      subject: 'Sign in to MutationMechanic',
+      html: `
+        <p>Click the link below to sign in to MutationMechanic:</p>
+        <a href="${verifyUrl}">${verifyUrl}</a>
+        <p>This link expires in 15 minutes.</p>
+      `
+    });
+
+    return res.json({ message: 'Magic link sent' });
+  } catch (error) {
+    logger.error('Error sending magic link:', error);
+    return res.status(500).json({ error: 'Failed to send magic link' });
+  }
+});
+
+// GET /api/auth/verify - Verify magic link token
+app.get('/api/auth/verify', async (req, res) => {
+  const { token } = req.query as { token?: string };
+
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'token is required' });
+  }
+
+  try {
+    // Hash incoming token for lookup - token is 256-bit random, sha256 is adequate
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const authToken = await prisma.authToken.findUnique({ where: { tokenHash } });
+
+    if (!authToken) {
+      return res.status(400).json({ error: 'Invalid token' });
+    }
+
+    // Lookup by tokenHash isolates the record - no need for additional comparison
+
+    if (authToken.expiresAt < new Date()) {
+      return res.status(400).json({ error: 'Token expired' });
+    }
+
+    if (authToken.usedAt) {
+      return res.status(400).json({ error: 'Token already used' });
+    }
+
+    // Mark token as used
+    await prisma.authToken.update({
+      where: { id: authToken.id },
+      data: { usedAt: new Date() }
+    });
+
+    // Get user
+    const user = await prisma.user.findUnique({ where: { id: authToken.userId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Create session
+    const sessionId = crypto.randomBytes(32).toString('hex');
+    sessions.set(sessionId, {
+      userId: user.id,
+      email: user.email,
+      plan: user.plan
+    });
+
+    // Set session cookie
+    res.cookie(SESSION_COOKIE_NAME, sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    return res.json({
+      user: { id: user.id, email: user.email, plan: user.plan }
+    });
+  } catch (error) {
+    logger.error('Error verifying token:', error);
+    return res.status(500).json({ error: 'Failed to verify token' });
+  }
+});
+
+// POST /api/auth/logout - Clear session
+app.post('/api/auth/logout', (req, res) => {
+  const sessionId = req.cookies[SESSION_COOKIE_NAME];
+  if (sessionId) {
+    sessions.delete(sessionId);
+  }
+  res.clearCookie(SESSION_COOKIE_NAME);
+  return res.json({ message: 'Logged out' });
+});
+
+// GET /api/auth/me - Get current user
+app.get('/api/auth/me', async (req, res) => {
+  const sessionId = req.cookies[SESSION_COOKIE_NAME];
+  if (!sessionId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    return res.status(401).json({ error: 'Session expired' });
+  }
+
+  return res.json({
+    user: { id: session.userId, email: session.email, plan: session.plan }
+  });
+});
+
+// ==================== USAGE METERING ====================
+
+// Check and record usage for metered features
+async function checkUsage(userId: string, feature: MeteredFeature): Promise<{ allowed: boolean; remaining: number; plan: string }> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    return { allowed: false, remaining: 0, plan: 'free' };
+  }
+
+  if (user.plan === 'pro') {
+    return { allowed: true, remaining: -1, plan: 'pro' }; // -1 means unlimited
+  }
+
+  const count = await prisma.usageEvent.count({
+    where: { userId, feature }
+  });
+
+  if (count >= FREE_USAGE_LIMIT) {
+    return { allowed: false, remaining: 0, plan: 'free' };
+  }
+
+  return { allowed: true, remaining: FREE_USAGE_LIMIT - count - 1, plan: 'free' };
+}
+
+async function recordUsage(userId: string, feature: MeteredFeature): Promise<void> {
+  await prisma.usageEvent.create({
+    data: { userId, feature }
+  });
+}
+
+// GET /api/usage - Get usage for current user
+app.get('/api/usage', async (req, res) => {
+  const sessionId = req.cookies[SESSION_COOKIE_NAME];
+  if (!sessionId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    return res.status(401).json({ error: 'Session expired' });
+  }
+
+  const usage: Record<string, { used: number; remaining: number; limit: number }> = {};
+
+  for (const feature of METRIFIED_FEATURES) {
+    const count = await prisma.usageEvent.count({
+      where: { userId: session.userId, feature }
+    });
+
+    usage[feature] = {
+      used: count,
+      remaining: session.plan === 'pro' ? -1 : Math.max(0, FREE_USAGE_LIMIT - count),
+      limit: session.plan === 'pro' ? -1 : FREE_USAGE_LIMIT
+    };
+  }
+
+  return res.json({ plan: session.plan, usage });
+});
+
+// ==================== STRIPE ROUTES ====================
+
+// POST /api/stripe/checkout - Create Stripe Checkout session
+app.post('/api/stripe/checkout', async (req, res) => {
+  const sessionId = req.cookies[SESSION_COOKIE_NAME];
+  if (!sessionId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    return res.status(401).json({ error: 'Session expired' });
+  }
+
+  if (!stripeClient || !process.env.STRIPE_PRICE_ID) {
+    return res.status(503).json({ error: 'Stripe not configured' });
+  }
+
+  try {
+    const checkoutSession = await stripeClient.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: process.env.STRIPE_PRICE_ID,
+          quantity: 1
+        }
+      ],
+      success_url: `${configuredFrontendUrl}/settings?subscription=success`,
+      cancel_url: `${configuredFrontendUrl}/settings?subscription=canceled`,
+      customer_email: session.email,
+      metadata: { userId: session.userId }
+    });
+
+    return res.json({ url: checkoutSession.url });
+  } catch (error) {
+    logger.error('Stripe checkout error:', error);
+    return res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// POST /api/stripe/webhook - Stripe webhook handler
+app.post('/api/stripe/webhook', async (req, res) => {
+  if (!stripeClient || !process.env.STRIPE_WEBHOOK_SECRET) {
+    return res.status(503).json({ error: 'Stripe not configured' });
+  }
+
+  const sig = req.headers['stripe-signature'] as string;
+  let event: Stripe.Event;
+
+  try {
+    event = stripeClient.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    logger.error('Webhook signature verification failed:', err);
+    return res.status(400).send('Webhook signature verification failed');
+  }
+
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = session.metadata?.userId;
+
+        if (userId && session.subscription) {
+          const subscription = await stripeClient.subscriptions.retrieve(session.subscription as string) as any;
+
+          await prisma.subscription.upsert({
+            where: { userId },
+            update: {
+              stripeSubscriptionId: subscription.id,
+              plan: 'pro',
+              status: subscription.status,
+              currentPeriodEnd: new Date(subscription.current_period_end * 1000)
+            },
+            create: {
+              userId,
+              stripeCustomerId: session.customer as string,
+              stripeSubscriptionId: subscription.id,
+              plan: 'pro',
+              status: subscription.status,
+              currentPeriodEnd: new Date(subscription.current_period_end * 1000)
+            }
+          });
+
+          await prisma.user.update({
+            where: { id: userId },
+            data: { plan: 'pro' }
+          });
+        }
+        break;
+      }
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as Stripe.Subscription;
+        const dbSub = await prisma.subscription.findUnique({
+          where: { stripeSubscriptionId: subscription.id }
+        });
+
+        if (dbSub) {
+          const subData = subscription as any;
+          const plan = subscription.status === 'active' ? 'pro' : 'free';
+          await prisma.subscription.update({
+            where: { id: dbSub.id },
+            data: {
+              plan,
+              status: subscription.status,
+              currentPeriodEnd: new Date(subData.current_period_end * 1000)
+            }
+          });
+
+          await prisma.user.update({
+            where: { id: dbSub.userId },
+            data: { plan }
+          });
+        }
+        break;
+      }
+    }
+
+    return res.json({ received: true });
+  } catch (error) {
+    logger.error('Stripe webhook error:', error);
+    return res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
 app.post('/api/ai/variant-analysis', async (req, res) => {
   const { gene, variant, mode = 'explainer' } = req.body as {
     gene?: string;
@@ -231,6 +639,29 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
 
+  // Auth check
+  const sessionId = req.cookies[SESSION_COOKIE_NAME];
+  if (!sessionId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    return res.status(401).json({ error: 'Session expired' });
+  }
+
+  // Usage metering - fail-closed
+  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
+  if (!usageCheck.allowed) {
+    return res.status(402).json({
+      error: 'Usage limit exceeded',
+      code: 'PAYWALL',
+      plan: session.plan,
+      message: `Free plan limit reached (${FREE_USAGE_LIMIT} uses). Upgrade to Pro for unlimited analyses.`,
+      upgradeUrl: `${configuredFrontendUrl}/settings`
+    });
+  }
+
   if (!process.env.GEMINI_API_KEY) {
     return res.status(503).json({ error: 'Gemini integration is not configured' });
   }
@@ -238,7 +669,9 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
   const cacheKey = `${mode}:${gene}:${variant}`.toUpperCase();
   const cached = geminiCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GEMINI_CACHE_TTL) {
-    return res.json({ ...cached.data, source: 'CACHE' });
+    // Record usage on cache hit too
+    await recordUsage(session.userId, 'variant_analysis');
+    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining });
   }
 
   try {
@@ -272,7 +705,7 @@ Use cautious scientific language, do not invent citations, and keep confidence v
     }
 
     const data = JSON.parse(response.text);
-    
+
     // Attach AlphaMissense pathogenicity score
     let alphaMissense = null;
     try {
@@ -286,9 +719,14 @@ Use cautious scientific language, do not invent citations, and keep confidence v
       aiAnalysis: data.analysis,
       variantId: `${gene}-${variant}`,
       alphaMissense,
-      source: 'API'
+      source: 'API',
+      remaining: usageCheck.remaining
     };
     geminiCache.set(cacheKey, { timestamp: Date.now(), data: payload });
+
+    // Record usage after successful analysis
+    await recordUsage(session.userId, 'variant_analysis');
+
     return res.json(payload);
   } catch (error) {
     logger.error('Gemini variant analysis failed:', error);
@@ -351,6 +789,25 @@ app.post('/api/ai/chat', async (req, res) => {
 app.post('/api/ai/clinical-analysis', async (req, res) => {
   const { gene, variant } = req.body as { gene?: string; variant?: string };
   if (!gene || !variant) return res.status(400).json({ error: 'gene and variant are required' });
+
+  // Auth check
+  const sessionId = req.cookies[SESSION_COOKIE_NAME];
+  if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
+  const session = sessions.get(sessionId);
+  if (!session) return res.status(401).json({ error: 'Session expired' });
+
+  // Usage metering - fail-closed
+  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
+  if (!usageCheck.allowed) {
+    return res.status(402).json({
+      error: 'Usage limit exceeded',
+      code: 'PAYWALL',
+      plan: session.plan,
+      message: `Free plan limit reached. Upgrade to Pro for unlimited analyses.`,
+      upgradeUrl: `${configuredFrontendUrl}/settings`
+    });
+  }
+
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'Gemini integration is not configured' });
 
   try {
@@ -361,7 +818,9 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
       config: { responseMimeType: 'application/json', temperature: 0.3 }
     });
     if (!response.text) return res.status(502).json({ error: 'Gemini returned an empty response' });
-    return res.json({ ...JSON.parse(response.text), variantId: `${gene}-${variant}`, gene, timestamp: Date.now(), source: 'API' });
+
+    await recordUsage(session.userId, 'variant_analysis');
+    return res.json({ ...JSON.parse(response.text), variantId: `${gene}-${variant}`, gene, timestamp: Date.now(), source: 'API', remaining: usageCheck.remaining - 1 });
   } catch (error) {
     logger.error('Gemini clinical analysis failed:', error);
     return res.status(502).json({ error: 'Gemini clinical analysis failed' });
@@ -443,6 +902,25 @@ app.post('/api/ai/grok-validation', async (req, res) => {
   if (!gene || !variant) {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
+
+  // Auth check
+  const sessionId = req.cookies[SESSION_COOKIE_NAME];
+  if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
+  const session = sessions.get(sessionId);
+  if (!session) return res.status(401).json({ error: 'Session expired' });
+
+  // Usage metering - fail-closed
+  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
+  if (!usageCheck.allowed) {
+    return res.status(402).json({
+      error: 'Usage limit exceeded',
+      code: 'PAYWALL',
+      plan: session.plan,
+      message: `Free plan limit reached. Upgrade to Pro for unlimited analyses.`,
+      upgradeUrl: `${configuredFrontendUrl}/settings`
+    });
+  }
+
   if (!grokClient) {
     return res.status(503).json({ error: 'Grok (xAI) integration is not configured' });
   }
@@ -450,7 +928,8 @@ app.post('/api/ai/grok-validation', async (req, res) => {
   const cacheKey = `grok:${gene}:${variant}`.toUpperCase();
   const cached = grokCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GROK_CACHE_TTL) {
-    return res.json({ ...cached.data, source: 'CACHE' });
+    await recordUsage(session.userId, 'variant_analysis');
+    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining - 1 });
   }
 
   const prompt = `You are a structural biology and molecular genetics expert performing an independent consensus validation of the mutation ${gene} ${variant}.
@@ -1420,10 +1899,17 @@ app.get('/api/users/:id', async (req, res) => {
 // Analysis routes
 app.post('/api/analyses', async (req, res) => {
   try {
-    const { userId, gene, variant, ...analysisData } = req.body;
+    const { gene, variant, ...analysisData } = req.body;
+
+    // Auth check - use session userId
+    const sessionId = req.cookies[SESSION_COOKIE_NAME];
+    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
+    const session = sessions.get(sessionId);
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+
     const analysis = await prisma.analysis.create({
       data: {
-        userId,
+        userId: session.userId,
         gene,
         variant,
         ...analysisData
@@ -1438,11 +1924,14 @@ app.post('/api/analyses', async (req, res) => {
 
 app.get('/api/analyses', async (req, res) => {
   try {
-    const { userId } = req.query;
+    // Auth check - use session userId
+    const sessionId = req.cookies[SESSION_COOKIE_NAME];
+    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
+    const session = sessions.get(sessionId);
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+
     const analyses = await prisma.analysis.findMany({
-      where: {
-        userId: userId as string
-      },
+      where: { userId: session.userId },
       orderBy: { createdAt: 'desc' }
     });
     return res.json(analyses);
@@ -1513,16 +2002,37 @@ app.get('/api/history/:userId', async (req, res) => {
 // Splicing analysis routes
 app.post('/api/splicing', async (req, res) => {
   try {
-    const { userId, analysisId, gene, variant, ...splicingData } = req.body;
+    const { analysisId, gene, variant, ...splicingData } = req.body;
+
+    // Auth check
+    const sessionId = req.cookies[SESSION_COOKIE_NAME];
+    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
+    const session = sessions.get(sessionId);
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+
+    // Usage metering
+    const usageCheck = await checkUsage(session.userId, 'splicing_decode');
+    if (!usageCheck.allowed) {
+      return res.status(402).json({
+        error: 'Usage limit exceeded',
+        code: 'PAYWALL',
+        plan: session.plan,
+        message: `Free plan limit reached. Upgrade to Pro for unlimited analyses.`,
+        upgradeUrl: `${configuredFrontendUrl}/settings`
+      });
+    }
+
     const splicingAnalysis = await prisma.splicingAnalysis.create({
       data: {
-        userId,
+        userId: session.userId,
         analysisId,
         gene,
         variant,
         ...splicingData
       }
     });
+
+    await recordUsage(session.userId, 'splicing_decode');
     return res.json(splicingAnalysis);
   } catch (error) {
     logger.error('Error creating splicing analysis:', error);
