@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
+import type { Prisma } from '@prisma/client';
 import { logger } from './utils/logger.js';
 import multer from 'multer';
 import crypto from 'crypto';
@@ -48,14 +49,151 @@ const resendClient = process.env.RESEND_API_KEY
   : null;
 
 const SESSION_COOKIE_NAME = 'mm_session';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
+// Session secret: required in production, dev fallback only when not production
+const SESSION_SECRET = process.env.SESSION_SECRET;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_LAST_SEEN_THROTTLE_MS = 60 * 1000; // 1 minute
 const FREE_USAGE_LIMIT = 2;
-const METRIFIED_FEATURES = ['variant_analysis', 'splicing_decode', 'dna_archive_lab', 'compensatory_design'] as const;
+const METRIFIED_FEATURES = ['variant_analysis', 'splicing_decode', 'ai_chat', 'clinical_summary'] as const;
 type MeteredFeature = typeof METRIFIED_FEATURES[number];
 
 // Session store (in-memory for simplicity; use Redis in production)
 const startTime = Date.now();
-const sessions = new Map<string, { userId: string; email: string; plan: string }>();
+
+// Assert secure configuration: fail hard in production if SESSION_SECRET is missing
+export function assertSecureConfig(): void {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const secret = process.env.SESSION_SECRET;
+  if (isProduction && !secret) {
+    const error = 'FATAL: SESSION_SECRET environment variable is required in production. Refusing to boot with insecure configuration.';
+    logger.error(error);
+    throw new Error(error);
+  }
+}
+
+// Session signing: HMAC-SHA256(sessionId, SESSION_SECRET)
+function signSession(sessionId: string): string {
+  const secret = SESSION_SECRET || 'dev-only-secret-never-in-production';
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(sessionId);
+  return hmac.digest('hex');
+}
+
+function verifySessionSignature(sessionId: string, signature: string): boolean {
+  const secret = SESSION_SECRET || 'dev-only-secret-never-in-production';
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(sessionId);
+  const expected = hmac.digest('hex');
+  if (signature.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+// Verify with explicit secret (for testing)
+function verifySessionSignatureWithSecret(sessionId: string, signature: string, secret: string): boolean {
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(sessionId);
+  const expected = hmac.digest('hex');
+  if (signature.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+interface DBSession {
+  userId: string;
+  email: string;
+  plan: string;
+  lastSeenAt: Date | null;
+  revokedAt: Date | null;
+  expiresAt: Date;
+}
+
+// lastSeenAt throttle: track when we last updated per session
+const lastSeenTracker = new Map<string, number>();
+
+// Eviction: delete expired/revoked sessions older than grace period (lazy, on auth requests)
+let lastEvictionTime = 0;
+const EVICTION_GRACE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+async function evictExpiredSessions(): Promise<void> {
+  const now = Date.now();
+  if (now - lastEvictionTime < EVICTION_GRACE_MS) return;
+  lastEvictionTime = now;
+
+  const graceAgo = new Date(now - EVICTION_GRACE_MS);
+  try {
+    await prisma.session.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: graceAgo } },
+          { revokedAt: { lt: graceAgo } }
+        ]
+      }
+    });
+  } catch (error) {
+    logger.error('Session eviction error:', error);
+  }
+}
+
+async function getSessionFromCookie(req: express.Request): Promise<DBSession | null> {
+  // Trigger lazy eviction occasionally
+  evictExpiredSessions().catch(() => {});
+
+  const cookieValue = req.cookies[SESSION_COOKIE_NAME];
+  if (!cookieValue || typeof cookieValue !== 'string') return null;
+
+  // Cookie value is "sessionId.signature"
+  const parts = cookieValue.split('.');
+  if (parts.length !== 2) return null;
+
+  const [sessionId, signature] = parts;
+  if (!sessionId || !signature) return null;
+
+  // Verify HMAC signature
+  if (!verifySessionSignature(sessionId, signature)) return null;
+
+  // Hash sessionId for DB lookup (follows same convention as AuthToken)
+  const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+
+  const dbSession = await prisma.session.findUnique({ where: { sessionHash } });
+  if (!dbSession) return null;
+
+  // Check revoked
+  if (dbSession.revokedAt) return null;
+
+  // Check expired
+  if (dbSession.expiresAt < new Date()) return null;
+
+  // Load user for email/plan
+  const user = await prisma.user.findUnique({ where: { id: dbSession.userId } });
+  if (!user) return null;
+
+  // Throttled lastSeenAt update (not more than once per minute)
+  const now = Date.now();
+  const lastSeen = lastSeenTracker.get(sessionId) || 0;
+  if (now - lastSeen > SESSION_LAST_SEEN_THROTTLE_MS) {
+    lastSeenTracker.set(sessionId, now);
+    prisma.session.update({
+      where: { id: dbSession.id },
+      data: { lastSeenAt: new Date() }
+    }).catch(() => {});
+  }
+
+  return {
+    userId: user.id,
+    email: user.email,
+    plan: user.plan,
+    lastSeenAt: dbSession.lastSeenAt,
+    revokedAt: dbSession.revokedAt,
+    expiresAt: dbSession.expiresAt
+  };
+}
 
 // Rate limiting for /api/auth/request-link
 // Per-email: max 3 requests per 15 minutes
@@ -88,16 +226,19 @@ function checkRateLimit(
   return { allowed: true };
 }
 
-function getClientIp(req: express.Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.ip || req.socket.remoteAddress || 'unknown';
-}
-
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Trust proxy configuration: read from env, default to 0 (no proxy)
+// When behind a proxy (Vercel, etc.), set TRUST_PROXY_HOPS=1
+// When running directly without proxy, must be 0 to prevent XFF spoofing
+const TRUST_PROXY_HOPS = parseInt(process.env.TRUST_PROXY_HOPS || '0', 10);
+app.set('trust proxy', TRUST_PROXY_HOPS);
+
+// Export for testing
+function getClientIp(req: express.Request): string {
+  return req.ip || 'unknown';
+}
 
 // Multer storage configuration
 const multerStorage = multer.diskStorage({
@@ -145,6 +286,9 @@ testDbConnection().catch(error => {
   logger.error('Database connection test failed:', error);
   logger.log('Server will continue running without database connection');
 });
+
+// Validate secure configuration at startup - fail closed in production
+assertSecureConfig();
 
 // Middleware
 const configuredFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -391,20 +535,29 @@ app.get('/api/auth/verify', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Create session
-    const sessionId = crypto.randomBytes(32).toString('hex');
-    sessions.set(sessionId, {
-      userId: user.id,
-      email: user.email,
-      plan: user.plan
+    // Create persistent session
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        sessionHash,
+        expiresAt
+      }
     });
 
+    // Sign sessionId with HMAC for tamper-proof cookie
+    const signature = signSession(sessionToken);
+    const cookieValue = `${sessionToken}.${signature}`;
+
     // Set session cookie
-    res.cookie(SESSION_COOKIE_NAME, sessionId, {
+    res.cookie(SESSION_COOKIE_NAME, cookieValue, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: SESSION_TTL_MS
     });
 
     return res.json({
@@ -417,10 +570,19 @@ app.get('/api/auth/verify', async (req, res) => {
 });
 
 // POST /api/auth/logout - Clear session
-app.post('/api/auth/logout', (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (sessionId) {
-    sessions.delete(sessionId);
+app.post('/api/auth/logout', async (req, res) => {
+  const cookieValue = req.cookies[SESSION_COOKIE_NAME];
+  if (cookieValue && typeof cookieValue === 'string') {
+    const parts = cookieValue.split('.');
+    if (parts.length === 2) {
+      const [sessionId] = parts;
+      const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+      // Mark as revoked instead of deleting immediately
+      await prisma.session.updateMany({
+        where: { sessionHash, revokedAt: null },
+        data: { revokedAt: new Date() }
+      }).catch(() => {});
+    }
   }
   res.clearCookie(SESSION_COOKIE_NAME);
   return res.json({ message: 'Logged out' });
@@ -428,24 +590,67 @@ app.post('/api/auth/logout', (req, res) => {
 
 // GET /api/auth/me - Get current user
 app.get('/api/auth/me', async (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    return res.json({
+      user: { id: session.userId, email: session.email, plan: session.plan }
+    });
+  } catch (error) {
+    logger.error('auth/me error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
-
-  const session = sessions.get(sessionId);
-  if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
-  }
-
-  return res.json({
-    user: { id: session.userId, email: session.email, plan: session.plan }
-  });
 });
 
 // ==================== USAGE METERING ====================
 
-// Check and record usage for metered features
+// Atomic reservation function - prevents TOCTOU race condition
+// Uses PostgreSQL advisory lock to serialize check+insert per (userId, feature)
+async function reserveUsage(userId: string, feature: MeteredFeature): Promise<{ allowed: boolean; remaining: number; plan: string }> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    return { allowed: false, remaining: 0, plan: 'free' };
+  }
+
+  if (user.plan === 'pro') {
+    return { allowed: true, remaining: -1, plan: 'pro' }; // -1 means unlimited
+  }
+
+  // Atomic transaction with advisory lock to prevent race conditions
+  // pg_advisory_xact_lock releases automatically at transaction end
+  const lockKey = `SELECT pg_advisory_xact_lock(hashtext('${userId}:${feature}'::text))`;
+
+  const result = await prisma.$transaction(async (tx: typeof prisma) => {
+    // Acquire advisory lock (serializes concurrent requests for same user+feature)
+    await tx.$executeRawUnsafe(lockKey);
+
+    // Re-count after acquiring lock (count may have changed)
+    const count = await tx.usageEvent.count({
+      where: { userId, feature }
+    });
+
+    if (count >= FREE_USAGE_LIMIT) {
+      return { allowed: false, remaining: 0, plan: 'free' as const };
+    }
+
+    // Reserve the slot atomically by inserting the usage event
+    await tx.usageEvent.create({
+      data: { userId, feature }
+    });
+
+    return {
+      allowed: true,
+      remaining: FREE_USAGE_LIMIT - count - 1,
+      plan: 'free' as const
+    };
+  });
+
+  return result;
+}
+
+// Legacy checkUsage - only for read-only /api/usage endpoint
 async function checkUsage(userId: string, feature: MeteredFeature): Promise<{ allowed: boolean; remaining: number; plan: string }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
@@ -467,22 +672,19 @@ async function checkUsage(userId: string, feature: MeteredFeature): Promise<{ al
   return { allowed: true, remaining: FREE_USAGE_LIMIT - count - 1, plan: 'free' };
 }
 
-async function recordUsage(userId: string, feature: MeteredFeature): Promise<void> {
-  await prisma.usageEvent.create({
-    data: { userId, feature }
-  });
-}
+// recordUsage removed - slot reservation is now atomic in reserveUsage()
 
 // GET /api/usage - Get usage for current user
 app.get('/api/usage', async (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const session = sessions.get(sessionId);
-  if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
+  let session;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+  } catch (error) {
+    logger.error('usage auth error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 
   const usage: Record<string, { used: number; remaining: number; limit: number }> = {};
@@ -506,14 +708,15 @@ app.get('/api/usage', async (req, res) => {
 
 // POST /api/stripe/checkout - Create Stripe Checkout session
 app.post('/api/stripe/checkout', async (req, res) => {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const session = sessions.get(sessionId);
-  if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
+  let session;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+  } catch (error) {
+    logger.error('checkout auth error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 
   if (!stripeClient || !process.env.STRIPE_PRICE_ID) {
@@ -639,19 +842,20 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
 
-  // Auth check
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return res.status(401).json({ error: 'Not authenticated' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    usageCheck = await reserveUsage(session.userId, 'variant_analysis');
+  } catch (error) {
+    logger.error('variant-analysis auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 
-  const session = sessions.get(sessionId);
-  if (!session) {
-    return res.status(401).json({ error: 'Session expired' });
-  }
-
-  // Usage metering - fail-closed
-  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -669,8 +873,7 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
   const cacheKey = `${mode}:${gene}:${variant}`.toUpperCase();
   const cached = geminiCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GEMINI_CACHE_TTL) {
-    // Record usage on cache hit too
-    await recordUsage(session.userId, 'variant_analysis');
+    // Slot already reserved via reserveUsage() at route entry
     return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining });
   }
 
@@ -724,9 +927,6 @@ Use cautious scientific language, do not invent citations, and keep confidence v
     };
     geminiCache.set(cacheKey, { timestamp: Date.now(), data: payload });
 
-    // Record usage after successful analysis
-    await recordUsage(session.userId, 'variant_analysis');
-
     return res.json(payload);
   } catch (error) {
     logger.error('Gemini variant analysis failed:', error);
@@ -768,6 +968,29 @@ app.post('/api/ai/chat', async (req, res) => {
   };
 
   if (!message) return res.status(400).json({ error: 'message is required' });
+
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'ai_chat');
+  } catch (error) {
+    logger.error('chat auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
+
+  if (!usageCheck.allowed) {
+    return res.status(402).json({
+      error: 'Usage limit exceeded',
+      code: 'PAYWALL',
+      plan: session.plan,
+      message: `Free plan limit reached. Upgrade to Pro for unlimited AI chat.`,
+      upgradeUrl: `${configuredFrontendUrl}/settings`
+    });
+  }
+
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'Gemini integration is not configured' });
 
   try {
@@ -779,7 +1002,7 @@ app.post('/api/ai/chat', async (req, res) => {
         { role: 'user', parts: [{ text: `Context:\n${context || 'No variant context'}\n\nQuestion:\n${message}` }] }
       ]
     });
-    return res.json({ text: response.text || '', source: 'API' });
+    return res.json({ text: response.text || '', source: 'API', remaining: usageCheck.remaining });
   } catch (error) {
     logger.error('Gemini chat failed:', error);
     return res.status(502).json({ error: 'Gemini chat failed' });
@@ -790,14 +1013,18 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
   const { gene, variant } = req.body as { gene?: string; variant?: string };
   if (!gene || !variant) return res.status(400).json({ error: 'gene and variant are required' });
 
-  // Auth check
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-  const session = sessions.get(sessionId);
-  if (!session) return res.status(401).json({ error: 'Session expired' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'variant_analysis');
+  } catch (error) {
+    logger.error('clinical-analysis auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
 
-  // Usage metering - fail-closed
-  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -819,8 +1046,7 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
     });
     if (!response.text) return res.status(502).json({ error: 'Gemini returned an empty response' });
 
-    await recordUsage(session.userId, 'variant_analysis');
-    return res.json({ ...JSON.parse(response.text), variantId: `${gene}-${variant}`, gene, timestamp: Date.now(), source: 'API', remaining: usageCheck.remaining - 1 });
+    return res.json({ ...JSON.parse(response.text), variantId: `${gene}-${variant}`, gene, timestamp: Date.now(), source: 'API', remaining: usageCheck.remaining });
   } catch (error) {
     logger.error('Gemini clinical analysis failed:', error);
     return res.status(502).json({ error: 'Gemini clinical analysis failed' });
@@ -835,6 +1061,29 @@ app.post('/api/ai/clinical-summary', async (req, res) => {
   if (!gene || !variant) {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
+
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'clinical_summary');
+  } catch (error) {
+    logger.error('clinical-summary auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
+
+  if (!usageCheck.allowed) {
+    return res.status(402).json({
+      error: 'Usage limit exceeded',
+      code: 'PAYWALL',
+      plan: session.plan,
+      message: `Free plan limit reached. Upgrade to Pro for unlimited clinical summaries.`,
+      upgradeUrl: `${configuredFrontendUrl}/settings`
+    });
+  }
+
   if (!process.env.GEMINI_API_KEY) {
     return res.status(503).json({ error: 'Gemini integration is not configured' });
   }
@@ -842,7 +1091,7 @@ app.post('/api/ai/clinical-summary', async (req, res) => {
   const cacheKey = `summary:${gene}:${variant}`.toUpperCase();
   const cached = geminiCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GEMINI_CACHE_TTL) {
-    return res.json({ ...cached.data, source: 'CACHE' });
+    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining });
   }
 
   try {
@@ -882,7 +1131,8 @@ Rules:
       alphaMissense,
       gene,
       variant,
-      source: 'API'
+      source: 'API',
+      remaining: usageCheck.remaining
     };
     geminiCache.set(cacheKey, { timestamp: Date.now(), data: payload });
     return res.json(payload);
@@ -903,14 +1153,18 @@ app.post('/api/ai/grok-validation', async (req, res) => {
     return res.status(400).json({ error: 'gene and variant are required' });
   }
 
-  // Auth check
-  const sessionId = req.cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-  const session = sessions.get(sessionId);
-  if (!session) return res.status(401).json({ error: 'Session expired' });
+  // Auth + metering: wrapped in try/catch so DB failures return 500, never crash or fail-open
+  let session;
+  let usageCheck;
+  try {
+    session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+    usageCheck = await reserveUsage(session.userId, 'variant_analysis');
+  } catch (error) {
+    logger.error('grok-validation auth/metering error:', error);
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
 
-  // Usage metering - fail-closed
-  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -928,8 +1182,7 @@ app.post('/api/ai/grok-validation', async (req, res) => {
   const cacheKey = `grok:${gene}:${variant}`.toUpperCase();
   const cached = grokCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GROK_CACHE_TTL) {
-    await recordUsage(session.userId, 'variant_analysis');
-    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining - 1 });
+    return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining });
   }
 
   const prompt = `You are a structural biology and molecular genetics expert performing an independent consensus validation of the mutation ${gene} ${variant}.
@@ -1902,10 +2155,8 @@ app.post('/api/analyses', async (req, res) => {
     const { gene, variant, ...analysisData } = req.body;
 
     // Auth check - use session userId
-    const sessionId = req.cookies[SESSION_COOKIE_NAME];
-    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-    const session = sessions.get(sessionId);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
     const analysis = await prisma.analysis.create({
       data: {
@@ -1925,10 +2176,8 @@ app.post('/api/analyses', async (req, res) => {
 app.get('/api/analyses', async (req, res) => {
   try {
     // Auth check - use session userId
-    const sessionId = req.cookies[SESSION_COOKIE_NAME];
-    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-    const session = sessions.get(sessionId);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
     const analyses = await prisma.analysis.findMany({
       where: { userId: session.userId },
@@ -2005,13 +2254,11 @@ app.post('/api/splicing', async (req, res) => {
     const { analysisId, gene, variant, ...splicingData } = req.body;
 
     // Auth check
-    const sessionId = req.cookies[SESSION_COOKIE_NAME];
-    if (!sessionId) return res.status(401).json({ error: 'Not authenticated' });
-    const session = sessions.get(sessionId);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
-    // Usage metering
-    const usageCheck = await checkUsage(session.userId, 'splicing_decode');
+    // Usage metering - fail-closed (atomic reservation)
+    const usageCheck = await reserveUsage(session.userId, 'splicing_decode');
     if (!usageCheck.allowed) {
       return res.status(402).json({
         error: 'Usage limit exceeded',
@@ -2032,7 +2279,7 @@ app.post('/api/splicing', async (req, res) => {
       }
     });
 
-    await recordUsage(session.userId, 'splicing_decode');
+    // Slot already reserved via reserveUsage() at route entry
     return res.json(splicingAnalysis);
   } catch (error) {
     logger.error('Error creating splicing analysis:', error);
@@ -2377,4 +2624,4 @@ function calculateRisk(
 }
 
 // End of routes and app definition
-export { prisma, app };
+export { prisma, app, reserveUsage, getClientIp };
