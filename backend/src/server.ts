@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { prisma } from './prisma.js';
+import type { Prisma } from '@prisma/client';
 import { logger } from './utils/logger.js';
 import multer from 'multer';
 import crypto from 'crypto';
@@ -445,7 +446,51 @@ app.get('/api/auth/me', async (req, res) => {
 
 // ==================== USAGE METERING ====================
 
-// Check and record usage for metered features
+// Atomic reservation function - prevents TOCTOU race condition
+// Uses PostgreSQL advisory lock to serialize check+insert per (userId, feature)
+async function reserveUsage(userId: string, feature: MeteredFeature): Promise<{ allowed: boolean; remaining: number; plan: string }> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    return { allowed: false, remaining: 0, plan: 'free' };
+  }
+
+  if (user.plan === 'pro') {
+    return { allowed: true, remaining: -1, plan: 'pro' }; // -1 means unlimited
+  }
+
+  // Atomic transaction with advisory lock to prevent race conditions
+  // pg_advisory_xact_lock releases automatically at transaction end
+  const lockKey = `SELECT pg_advisory_xact_lock(hashtext('${userId}:${feature}'::text))`;
+
+  const result = await prisma.$transaction(async (tx: typeof prisma) => {
+    // Acquire advisory lock (serializes concurrent requests for same user+feature)
+    await tx.$executeRawUnsafe(lockKey);
+
+    // Re-count after acquiring lock (count may have changed)
+    const count = await tx.usageEvent.count({
+      where: { userId, feature }
+    });
+
+    if (count >= FREE_USAGE_LIMIT) {
+      return { allowed: false, remaining: 0, plan: 'free' as const };
+    }
+
+    // Reserve the slot atomically by inserting the usage event
+    await tx.usageEvent.create({
+      data: { userId, feature }
+    });
+
+    return {
+      allowed: true,
+      remaining: FREE_USAGE_LIMIT - count - 1,
+      plan: 'free' as const
+    };
+  });
+
+  return result;
+}
+
+// Legacy checkUsage - only for read-only /api/usage endpoint
 async function checkUsage(userId: string, feature: MeteredFeature): Promise<{ allowed: boolean; remaining: number; plan: string }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
@@ -467,11 +512,7 @@ async function checkUsage(userId: string, feature: MeteredFeature): Promise<{ al
   return { allowed: true, remaining: FREE_USAGE_LIMIT - count - 1, plan: 'free' };
 }
 
-async function recordUsage(userId: string, feature: MeteredFeature): Promise<void> {
-  await prisma.usageEvent.create({
-    data: { userId, feature }
-  });
-}
+// recordUsage removed - slot reservation is now atomic in reserveUsage()
 
 // GET /api/usage - Get usage for current user
 app.get('/api/usage', async (req, res) => {
@@ -650,8 +691,8 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
     return res.status(401).json({ error: 'Session expired' });
   }
 
-  // Usage metering - fail-closed
-  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
+  // Usage metering - fail-closed (atomic reservation)
+  const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -669,8 +710,7 @@ app.post('/api/ai/variant-analysis', async (req, res) => {
   const cacheKey = `${mode}:${gene}:${variant}`.toUpperCase();
   const cached = geminiCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GEMINI_CACHE_TTL) {
-    // Record usage on cache hit too
-    await recordUsage(session.userId, 'variant_analysis');
+    // Slot already reserved via reserveUsage() at route entry
     return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining });
   }
 
@@ -723,9 +763,6 @@ Use cautious scientific language, do not invent citations, and keep confidence v
       remaining: usageCheck.remaining
     };
     geminiCache.set(cacheKey, { timestamp: Date.now(), data: payload });
-
-    // Record usage after successful analysis
-    await recordUsage(session.userId, 'variant_analysis');
 
     return res.json(payload);
   } catch (error) {
@@ -796,8 +833,8 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
   const session = sessions.get(sessionId);
   if (!session) return res.status(401).json({ error: 'Session expired' });
 
-  // Usage metering - fail-closed
-  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
+  // Usage metering - fail-closed (atomic reservation)
+  const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -819,7 +856,6 @@ app.post('/api/ai/clinical-analysis', async (req, res) => {
     });
     if (!response.text) return res.status(502).json({ error: 'Gemini returned an empty response' });
 
-    await recordUsage(session.userId, 'variant_analysis');
     return res.json({ ...JSON.parse(response.text), variantId: `${gene}-${variant}`, gene, timestamp: Date.now(), source: 'API', remaining: usageCheck.remaining - 1 });
   } catch (error) {
     logger.error('Gemini clinical analysis failed:', error);
@@ -909,8 +945,8 @@ app.post('/api/ai/grok-validation', async (req, res) => {
   const session = sessions.get(sessionId);
   if (!session) return res.status(401).json({ error: 'Session expired' });
 
-  // Usage metering - fail-closed
-  const usageCheck = await checkUsage(session.userId, 'variant_analysis');
+  // Usage metering - fail-closed (atomic reservation)
+  const usageCheck = await reserveUsage(session.userId, 'variant_analysis');
   if (!usageCheck.allowed) {
     return res.status(402).json({
       error: 'Usage limit exceeded',
@@ -928,7 +964,7 @@ app.post('/api/ai/grok-validation', async (req, res) => {
   const cacheKey = `grok:${gene}:${variant}`.toUpperCase();
   const cached = grokCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < GROK_CACHE_TTL) {
-    await recordUsage(session.userId, 'variant_analysis');
+    // Slot already reserved via reserveUsage() at route entry
     return res.json({ ...cached.data, source: 'CACHE', remaining: usageCheck.remaining - 1 });
   }
 
@@ -2010,8 +2046,8 @@ app.post('/api/splicing', async (req, res) => {
     const session = sessions.get(sessionId);
     if (!session) return res.status(401).json({ error: 'Session expired' });
 
-    // Usage metering
-    const usageCheck = await checkUsage(session.userId, 'splicing_decode');
+    // Usage metering - fail-closed (atomic reservation)
+    const usageCheck = await reserveUsage(session.userId, 'splicing_decode');
     if (!usageCheck.allowed) {
       return res.status(402).json({
         error: 'Usage limit exceeded',
@@ -2032,7 +2068,7 @@ app.post('/api/splicing', async (req, res) => {
       }
     });
 
-    await recordUsage(session.userId, 'splicing_decode');
+    // Slot already reserved via reserveUsage() at route entry
     return res.json(splicingAnalysis);
   } catch (error) {
     logger.error('Error creating splicing analysis:', error);
@@ -2377,4 +2413,4 @@ function calculateRisk(
 }
 
 // End of routes and app definition
-export { prisma, app };
+export { prisma, app, reserveUsage };

@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { app } from '../../src/server.js';
+import { app, prisma } from '../../src/server.js';
 import Stripe from 'stripe';
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
@@ -204,5 +204,123 @@ describe('Stripe Webhook Raw Body', () => {
     // If raw body ordering is wrong, Stripe.constructEvent would fail with type error
     // If correct, it will either succeed (200), fail on DB (500), or Stripe not configured (503)
     expect([200, 500, 503]).toContain(response.status);
+  });
+});
+
+describe('Usage Metering Race Condition Fix', () => {
+  let original$transaction: any;
+
+  beforeEach(() => {
+    original$transaction = (prisma as any).$transaction;
+    jest.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    (prisma as any).$transaction = original$transaction;
+  });
+
+  it('atomic reservation: only FREE_USAGE_LIMIT succeed out of N concurrent requests', async () => {
+    const FREE_LIMIT = 2;
+    const TOTAL_REQUESTS = 10;
+    const userId = 'test-user-concurrent-reservation';
+    const feature = 'variant_analysis';
+
+    const usageStore: Array<{ id: string; userId: string; feature: string }> = [];
+    let txCallCount = 0;
+
+    // Serializing queue: simulates PostgreSQL advisory lock serialization
+    const pendingCallbacks: Array<() => Promise<any>> = [];
+    let isExecuting = false;
+
+    const executeNext = async (): Promise<void> => {
+      if (pendingCallbacks.length === 0) return;
+      const callback = pendingCallbacks.shift()!;
+      isExecuting = true;
+      try {
+        await callback();
+      } finally {
+        isExecuting = false;
+        if (pendingCallbacks.length > 0) executeNext();
+      }
+    };
+
+    const mockTransaction = async <T>(callback: (tx: any) => Promise<T>): Promise<T> => {
+      txCallCount++;
+      const mockTx = {
+        $executeRawUnsafe: jest.fn().mockResolvedValue(null),
+        usageEvent: {
+          count: jest.fn().mockImplementation(async () => usageStore.length),
+          create: jest.fn().mockImplementation(async (data: any) => {
+            const record = { id: `event-${usageStore.length + 1}`, ...data };
+            usageStore.push(record);
+            return record;
+          })
+        }
+      };
+
+      return new Promise<T>((resolve) => {
+        pendingCallbacks.push(async () => {
+          const result = await callback(mockTx);
+          resolve(result);
+        });
+        if (!isExecuting && pendingCallbacks.length === 1) executeNext();
+      });
+    };
+
+    (prisma as any).$transaction = mockTransaction;
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: userId,
+      email: 'test@example.com',
+      plan: 'free'
+    });
+
+    const { reserveUsage } = await import('../../src/server.js');
+
+    const results = await Promise.all(
+      Array.from({ length: TOTAL_REQUESTS }, () =>
+        reserveUsage(userId, feature)
+      )
+    );
+
+    const allowedCount = results.filter(r => r.allowed).length;
+    const deniedCount = results.filter(r => !r.allowed).length;
+
+    expect(allowedCount).toBe(FREE_LIMIT);
+    expect(deniedCount).toBe(TOTAL_REQUESTS - FREE_LIMIT);
+    expect(usageStore.length).toBe(FREE_LIMIT);
+    expect(txCallCount).toBe(TOTAL_REQUESTS);
+  });
+
+  it('reserveUsage inserts usageEvent via transaction client, not root prisma', async () => {
+    // Structural test: proves insert runs on tx client, not root prisma
+    const userId = 'test-user-structural';
+    const feature = 'variant_analysis';
+    let txUsageEventCreateCalled = false;
+
+    const mockTransaction = async <T>(callback: (tx: any) => Promise<T>): Promise<T> => {
+      const mockTx = {
+        $executeRawUnsafe: jest.fn().mockResolvedValue(null),
+        usageEvent: {
+          count: jest.fn().mockResolvedValue(0),
+          create: jest.fn().mockImplementation(async (data: any) => {
+            txUsageEventCreateCalled = true;
+            return { id: 'event-1', ...data };
+          })
+        }
+      };
+      return callback(mockTx);
+    };
+
+    (prisma as any).$transaction = mockTransaction;
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: userId,
+      email: 'test@example.com',
+      plan: 'free'
+    });
+
+    const { reserveUsage } = await import('../../src/server.js');
+    await reserveUsage(userId, feature);
+
+    expect(txUsageEventCreateCalled).toBe(true);
   });
 });
