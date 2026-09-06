@@ -1498,9 +1498,9 @@ app.post('/api/patients', async (req, res) => {
     const session = await getSessionFromCookie(req);
     if (!session) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { patientId, name } = req.body;
+    const { patientId } = req.body;
     const patient = await prisma.patient.create({
-      data: { patientId, name }
+      data: { patientId }
     });
     await auditAction(prisma, 'patient_created', patient.id, 'Patient', null, redactSensitive(req.body));
     return res.json(redactSensitive(patient));
@@ -1763,14 +1763,14 @@ app.post('/api/variants/mock-ingest', async (req, res) => {
   ];
 
   const MOCK_PATIENTS = [
-    { patientId: 'P001', name: 'John Smith - SMA Diagnosis' },
-    { patientId: 'P002', name: 'Sarah Johnson - CML with BCR-ABL1 Fusion' },
-    { patientId: 'P003', name: 'Michael Brown - Hereditary Breast Cancer' },
-    { patientId: 'P004', name: 'Emily Davis - Cystic Fibrosis' },
-    { patientId: 'P005', name: 'Robert Martinez - Pancreatic Cancer' },
-    { patientId: 'P006', name: 'Jennifer Wilson - NSCLC' },
-    { patientId: 'P007', name: 'David Anderson - DMD' },
-    { patientId: 'P008', name: 'Lisa Thompson - VHL Disease' }
+    { patientId: 'P001' },
+    { patientId: 'P002' },
+    { patientId: 'P003' },
+    { patientId: 'P004' },
+    { patientId: 'P005' },
+    { patientId: 'P006' },
+    { patientId: 'P007' },
+    { patientId: 'P008' }
   ];
 
   try {
@@ -1785,8 +1785,8 @@ app.post('/api/variants/mock-ingest', async (req, res) => {
       try {
         const patient = await prisma.patient.upsert({
           where: { patientId: p.patientId },
-          update: { name: p.name },
-          create: { patientId: p.patientId, name: p.name }
+          update: {},
+          create: { patientId: p.patientId }
         });
         logger.log(`  Created/found patient: ${p.patientId} (internal ID: ${patient.id})`);
         patientsCreated++;
@@ -2037,10 +2037,10 @@ app.post('/api/seed-models', async (req, res) => {
 app.post('/api/seed-clinical', async (req, res) => {
   try {
     const CLINICAL_PATIENTS = [
-      { patientId: 'P123', name: 'SMA Patient A' },
-      { patientId: 'P456', name: 'Cystic Fibrosis Cohort' },
-      { patientId: 'P789', name: 'Cancer Panel 1' },
-      { patientId: 'P101', name: 'Rare Disease Family' }
+      { patientId: 'P123' },
+      { patientId: 'P456' },
+      { patientId: 'P789' },
+      { patientId: 'P101' }
     ];
 
     const REAL_CLINICAL_VARIANTS = [
@@ -2084,8 +2084,8 @@ app.post('/api/seed-clinical', async (req, res) => {
     for (const p of CLINICAL_PATIENTS) {
       const patient = await prisma.patient.upsert({
         where: { patientId: p.patientId },
-        update: { name: p.name },
-        create: p
+        update: {},
+        create: { patientId: p.patientId }
       });
       patientMap[p.patientId] = patient.id;
     }
