@@ -1448,6 +1448,9 @@ app.get('/api/test-storage', async (req, res) => {
 // Variant routes
 app.post('/api/variants', async (req, res) => {
   try {
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
     const { patientId, gene, hgvs_c, ...otherData } = req.body;
 
     // Ensure patient exists or create it
@@ -1483,7 +1486,7 @@ app.post('/api/variants', async (req, res) => {
 
     await auditAction(prisma, 'variant_updated_or_created', variant.id, 'Variant', null, redactSensitive(req.body));
 
-    return res.json(variant);
+    return res.json(redactSensitive(variant));
   } catch (error) {
     logger.error('Error upserting variant:', error);
     return res.status(500).json({ error: 'Failed to process variant' });
@@ -1492,12 +1495,15 @@ app.post('/api/variants', async (req, res) => {
 
 app.post('/api/patients', async (req, res) => {
   try {
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
     const { patientId, name } = req.body;
     const patient = await prisma.patient.create({
       data: { patientId, name }
     });
     await auditAction(prisma, 'patient_created', patient.id, 'Patient', null, redactSensitive(req.body));
-    return res.json(patient);
+    return res.json(redactSensitive(patient));
   } catch (error) {
     logger.error('Error creating patient:', error);
     return res.status(500).json({ error: 'Failed to create patient' });
@@ -1526,6 +1532,12 @@ app.get('/api/patients', async (req, res) => {
 
 // POST /api/variants/mock-ingest - Populate database with realistic sample clinical mutation variant records
 app.post('/api/variants/mock-ingest', async (req, res) => {
+  const session = await getSessionFromCookie(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Mock seeding is not available in production' });
+  }
+
   const MOCK_CLINICAL_VARIANTS = [
     {
       patientId: 'P001',
@@ -2204,11 +2216,15 @@ app.get('/api/analyses', async (req, res) => {
 
 app.get('/api/analyses/:id', async (req, res) => {
   try {
+    const session = await getSessionFromCookie(req);
+    if (!session) return res.status(401).json({ error: 'Not authenticated' });
+
     const { id } = req.params;
-    const analysis = await prisma.analysis.findUnique({
-      where: { id },
+    // findFirst: { id, userId } is not a unique constraint (no schema migration).
+    // Null covers both missing and not-owned — do not distinguish (no 403).
+    const analysis = await prisma.analysis.findFirst({
+      where: { id, userId: session.userId },
       include: {
-        user: true,
         historyRecords: true,
         splicingAnalysis: true
       }

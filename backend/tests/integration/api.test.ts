@@ -4,6 +4,7 @@ import { jest, describe, it, expect } from '@jest/globals';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 // backend/tests/integration/api.test.ts -> backend/test.pdb
 const PDB_FIXTURE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test.pdb');
@@ -49,27 +50,74 @@ describe('API Integration', () => {
     });
 
     describe('GET /api/analyses/:id', () => {
-        it('should return analysis object on success', async () => {
-            const mockAnalysis = { id: 'a1', gene: 'BRCA1' };
-            (prisma.analysis.findUnique as any).mockResolvedValue(mockAnalysis);
+        const TEST_USER_ID = 'test-user-id';
+        // Match backend/src/server.ts signSession fallback (not auth.test.ts's different default).
+        const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-secret-never-in-production';
 
+        function makeSignedCookie(sessionId: string): string {
+            const sig = crypto.createHmac('sha256', SESSION_SECRET).update(sessionId).digest('hex');
+            return `${sessionId}.${sig}`;
+        }
+
+        function mockValidSession(sessionId = 'test-session-token'): string {
+            const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+            jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+                id: 'session-row-id',
+                userId: TEST_USER_ID,
+                sessionHash,
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                lastSeenAt: null,
+                revokedAt: null,
+                createdAt: new Date()
+            } as any);
+            jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+                id: TEST_USER_ID,
+                email: 'test@example.com',
+                plan: 'free'
+            } as any);
+            return `mm_session=${makeSignedCookie(sessionId)}`;
+        }
+
+        it('should return 401 when not authenticated', async () => {
             const res = await request(app).get('/api/analyses/a1');
+            expect(res.status).toBe(401);
+            expect(res.body).toEqual({ error: 'Not authenticated' });
+        });
+
+        it('should return analysis object on success', async () => {
+            const mockAnalysis = { id: 'a1', gene: 'BRCA1', userId: TEST_USER_ID };
+            jest.spyOn(prisma.analysis, 'findFirst').mockResolvedValue(mockAnalysis as any);
+
+            const res = await request(app)
+                .get('/api/analyses/a1')
+                .set('Cookie', mockValidSession());
             expect(res.status).toBe(200);
             expect(res.body).toEqual(mockAnalysis);
+            expect(res.body.user).toBeUndefined();
+
+            expect(prisma.analysis.findFirst).toHaveBeenCalled();
+            const findArg = (prisma.analysis.findFirst as any).mock.calls[0][0];
+            expect(findArg.where).toEqual({ id: 'a1', userId: TEST_USER_ID });
+            expect(findArg.include).toEqual({ historyRecords: true, splicingAnalysis: true });
+            expect(findArg.include.user).toBeUndefined();
         });
 
         it('should return 404 error object when analysis not found', async () => {
-            (prisma.analysis.findUnique as any).mockResolvedValue(null);
+            jest.spyOn(prisma.analysis, 'findFirst').mockResolvedValue(null);
 
-            const res = await request(app).get('/api/analyses/unknown');
+            const res = await request(app)
+                .get('/api/analyses/unknown')
+                .set('Cookie', mockValidSession());
             expect(res.status).toBe(404);
             expect(res.body).toEqual({ error: 'Analysis not found' });
         });
 
         it('should return 500 error object on database error', async () => {
-            (prisma.analysis.findUnique as any).mockRejectedValue(new Error('DB error'));
+            jest.spyOn(prisma.analysis, 'findFirst').mockRejectedValue(new Error('DB error'));
 
-            const res = await request(app).get('/api/analyses/a1');
+            const res = await request(app)
+                .get('/api/analyses/a1')
+                .set('Cookie', mockValidSession());
             expect(res.status).toBe(500);
             expect(res.body).toEqual({ error: 'Failed to fetch analysis' });
         });
