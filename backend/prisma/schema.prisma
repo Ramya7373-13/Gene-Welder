@@ -27,9 +27,10 @@ model User {
   proteinStructures   ProteinStructure[]
   riskAssessments     RiskAssessment[]
   authTokens          AuthToken[]
-  sessions            Session[]
-  subscriptions       Subscription[]
-  usageEvents         UsageEvent[]
+   sessions            Session[]
+   subscriptions       Subscription[]
+   usageEvents         UsageEvent[]
+   designProjects      DesignProject[]
 
   @@map("users")
 }
@@ -610,4 +611,209 @@ model UsageEvent {
 
   @@index([userId, feature, createdAt])
   @@map("usage_events")
+}
+
+// ============================================================================
+// Design Studio — Variant-to-Intervention Design Platform
+// RFdiffusion3 integration models. These extend the existing clinical models
+// without modifying them.
+// ============================================================================
+
+// A design project groups related design runs aimed at a therapeutic outcome.
+model DesignProject {
+  id           String        @id @default(cuid())
+  name         String
+  description  String?
+  userId       String
+  targetGene   String?
+  targetVariant String?     // HGVS notation
+  status       DesignProjectStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs         DesignRun[]
+  ledgers      DesignLedger[] @relation("ProjectLedger")
+
+  @@index([userId])
+  @@index([targetGene])
+  @@map("design_projects")
+}
+
+enum DesignProjectStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
+}
+
+// A single RFD3 design run belonging to a project.
+model DesignRun {
+  id            String         @id @default(cuid())
+  projectId     String
+  mode          DesignMode
+  designEngine  String         @default("rfd3") // "rfd3", "rfd2", etc.
+  status        DesignRunStatus @default(QUEUED)
+  parameters    Json           // RFD3 hyperparameters and design parameters
+  constraintSpec Json?         // User-defined constraints snapshot (hotspots, burial depth, etc.)
+  targetStructure String?      // PDB/mmCIF content or path
+  targetSequence  String?      // Protein sequence
+  gpuId        String?         // Assigned GPU worker identifier
+  startedAt    DateTime?
+  completedAt  DateTime?
+  failedReason String?         // Error message on failure
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  project       DesignProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  candidates    DesignCandidate[]
+  constraints   DesignConstraint[]
+  ledgerEntries DesignLedger[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([mode])
+  @@map("design_runs")
+}
+
+enum DesignMode {
+  BINDER
+  STABILIZER
+  DNA_BINDER
+  ENZYME_RESCUE
+  SCAFFOLD
+  SYMMETRIC_ASSEMBLY
+  MOTIF_SCAFFOLD
+  PROTEIN_SCAFFOLD
+}
+
+enum DesignRunStatus {
+  QUEUED
+  RUNNING
+  VALIDATING
+  COMPLETED
+  FAILED
+}
+
+// Phase E: durable GPU job record. Mirrors every state transition of a design
+// job as it moves through the GPU worker pool so the queue can be reconstructed
+// after a process restart. `workerId` references the in-memory GPUWorkerRegistry
+// (a worker is a process's reported device, not a database row).
+model GPUJob {
+  id              String        @id @default(cuid())
+  runId           String
+  projectId       String
+  mode            String
+  payload         Json
+  status          GPUJobStatus  @default(QUEUED)
+  attempts        Int           @default(0)
+  maxAttempts     Int           @default(3)
+  workerId        String?
+  lastHeartbeatAt DateTime?
+  errorMessage    String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([runId])
+  @@index([status])
+  @@index([workerId])
+  @@map("gpu_jobs")
+}
+
+enum GPUJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// A single designed candidate structure from a design run.
+model DesignCandidate {
+  id              String       @id @default(cuid())
+  runId           String
+  structure        String?     // PDB/mmCIF content
+  sequence         String?
+  affinityScore   Float?
+  rankedPosition Int?          // 1 = top ranked candidate
+  designMetrics  Json?         // pTM, ipTM, interface area, etc.
+  structuredFile String?       // relative artifact path in the Phase F store
+  createdAt       DateTime     @default(now())
+
+  run              DesignRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  validationResults ValidationResult[]
+  ledgerEntries    DesignLedger[]
+
+  @@index([runId])
+  @@index([rankedPosition])
+  @@map("design_candidates")
+}
+
+// Design constraints defined by the user for a run.
+model DesignConstraint {
+  id         String   @id @default(cuid())
+  runId      String
+  constraintType String  // "hotspot", "burialDepth", "hbond", "interface", "motif"
+  spec       Json      // {residues: ["A:46","A:48"], depth: 5.0, ...}
+  createdAt  DateTime  @default(now())
+
+  run        DesignRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, constraintType])
+  @@map("design_constraints")
+}
+
+// Validation results for a candidate from the DesignValidationEngine.
+model ValidationResult {
+  id                    String   @id @default(cuid())
+  candidateId          String
+  pTM                  Float?
+  ipTM                 Float?
+  pLDDT                Float?
+  interfaceArea        Float?    // buried surface area (Å²)
+  constraintSatisfactionScore Float?
+  diversityScore       Float?
+  overallScore         Float?
+  details              Json?     // Detailed metrics from each validation sub-step
+  createdAt            DateTime  @default(now())
+
+  candidate           DesignCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([overallScore])
+  @@map("validation_results")
+}
+
+// Immutable audit trail for every executed design.
+model DesignLedger {
+  id               String   @id @default(cuid())
+  candidateId      String
+  projectId        String?
+  modelVersion     String    // RFD3 model version tag
+  weightsHash      String    // SHA-256 of model weights used
+  seed             Int       // Random seed for reproducibility
+  inputConstraints Json?     // Full set of conditioning constraints at run time
+  userId           String    // Who initiated the design
+  timestamp        DateTime  @default(now())
+  validationMetrics Json?    // Snapshot of validation result at time of ledger entry
+  runId            String?   // Link back to the run
+
+  // Phase G hash-chain: tamper-evident ledger links.
+  gitCommitHash      String? // Source revision that ran the engine
+  jobId              String? // Execution job id that produced the candidate
+  candidateHash      String? // sha256 of the candidate's canonical content
+  validationHash     String? // sha256 of the validation snapshot at write time
+  previousLedgerHash String? // sha256 of the prior entry in the candidate's chain
+  ledgerHash         String? // sha256 of this entry's canonical content
+
+  candidate         DesignCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  run              DesignRun?         @relation(fields: [runId], references: [id], onDelete: SetNull)
+  project          DesignProject?    @relation("ProjectLedger", fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([candidateId])
+  @@index([userId])
+  @@index([modelVersion])
+  @@index([projectId])
+  @@map("design_ledger")
 }

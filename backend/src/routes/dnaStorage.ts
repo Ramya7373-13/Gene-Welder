@@ -300,7 +300,11 @@ dnaStorageRouter.post('/experiments/:id/encode', async (req: Request, res: Respo
     });
 
     // Retention rule: purge source bytes after encode; keep SHA-256 + metadata.
-    await fs.rm(fileRecord.storagePath, { force: true });
+    // Swallow filesystem errors here: the worst case (bytes already gone, e.g.
+    // a prior partial run) shouldn't fail an otherwise-successful encode.
+    await fs.rm(fileRecord.storagePath, { force: true }).catch((rmErr) => {
+      logger.warn('dna-storage source purge failed (non-fatal):', rmErr);
+    });
     await prisma.dnaStorageFile.update({
       where: { id: fileRecord.id },
       data: { purgedAt: new Date(), storagePath: null },
@@ -657,7 +661,11 @@ dnaStorageRouter.delete('/experiments/:id', async (req: Request, res: Response) 
 
     const files = await prisma.dnaStorageFile.findMany({ where: { experimentId: id } });
     for (const file of files) {
-      if (file.storagePath) await fs.rm(file.storagePath, { force: true });
+      if (file.storagePath) {
+        await fs.rm(file.storagePath, { force: true }).catch((rmErr) => {
+          logger.warn('dna-storage delete purge failed (non-fatal):', rmErr);
+        });
+      }
     }
     await prisma.dnaStorageExperiment.delete({ where: { id } });
     await auditAction(
