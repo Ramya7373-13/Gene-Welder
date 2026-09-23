@@ -232,3 +232,14 @@ workers would still need `startLivenessSweep` wired at boot (see risks).
 Close-out checklist per `Instructions_5.md`: hygiene done (probes/logs/recon
 scratch removed; backend stopped before `backend-restart.log` delete); docs
 validated; commit staged with explicit paths only.
+
+---
+
+## 9. Lessons learned (preserved per Instructions_5 §3)
+
+| Obs | Lesson |
+|---|---|
+| **0024** | Runtime traced healthy end-to-end; earlier diagnosis was a **payload-shape mismatch**, not a worker deadlock. |
+| **0026** | Ledger **write/read shape parity** is required for hash verification (`ledgerRowToEntry` must match write-time `stableStringify`). |
+| **0027** | Repo lint gate can fail solely because **ESLint flat-config / version pinning** lags the installed major (eslintrc vs ESLint 9+/10). |
+| **0028** | On mixed working trees, **stage explicit paths only** (no `git add -A`); commit scope is a phase boundary, not a worktree boundary. |

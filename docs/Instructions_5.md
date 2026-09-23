@@ -1,149 +1,131 @@
-Phase I is accepted as COMPLETE based on the reported evidence, green gates, runtime verification, Playwright success, and documentation updates.
+Phase I is formally accepted. Good recovery from the earlier contract and runtime assumptions. The acceptance basis is the evidence-backed completion report, successful Playwright execution, green gates, and repository-backed verification of the real /api/design surface.
 2
  
 3
-Before moving to the next phase, perform the final Phase I close-out checklist:
+Close-out instructions:
 4
  
 5
-1. Repository Hygiene
+1. Ensure the repository is clean.
 6
-- Delete:
+- Remove any remaining temporary probe/debug artifacts.
 7
-- backend/probe-db.cjs
+- Confirm no investigation-only files are included in future commits.
 8
-- backend/probe-run-status.cjs
+- Verify backend-restart.log is removed once the backend process is no longer using it.
 9
-- backend/tsc-errors.txt
+ 
 10
-- Delete backend/backend-restart.log after the running backend is stopped.
+2. Verify the final phase documents are the source of truth:
 11
-- Confirm no temporary debugging artifacts remain in the commit.
-12
- 
-13
-2. Final Verification
-14
-Re-run only if needed for confirmation:
-15
-- backend npx tsc --noEmit
-16
-- backend npm run build
-17
-- root npx tsc --noEmit
-18
-- Playwright suite
-19
-- backend npm test
-20
- 
-21
-Record the exact exit codes in the completion report.
-22
- 
-23
-3. Documentation Validation
-24
-Verify:
-25
 - docs/phase-i-plan.md
-26
+12
 - docs/phase-i-rebaseline.md
-27
+13
 - docs/Phase I Completion Report.md
+14
+- docs/next-phase-planning.md
+15
+ 
+16
+3. Preserve the lessons learned in the documentation:
+17
+- 0024 runtime traced healthy; earlier diagnosis caused by payload-shape mismatch.
+18
+- 0026 ledger write/read shape parity required for hash verification.
+19
+- 0027 eslint flat-config/version pinning.
+20
+- 0028 explicit-path staging on mixed trees.
+21
+ 
+22
+4. No further Phase I feature work unless a post-review defect is discovered.
+23
+ 
+24
+Next-phase directive:
+25
+ 
+26
+The current mission is blocked because no authoritative next-phase specification exists.
+27
+ 
 28
- 
+Do not infer a Phase J objective from comments, historical notes, branch names, completion reports, or other repository artifacts.
 29
-include:
+ 
 30
-- acceptance criteria mapping
+Instead:
 31
-- exact commands executed
+ 
 32
-- exact exit codes
+1. Read and catalog all instruction documents currently available:
 33
-- files created
+- docs/Instructions_3.md
 34
-- files modified
+- docs/Instructions_4.md
 35
-- ledger API contract
+- docs/Instructions_5.md
 36
-- session-fixture design
+- any other Instructions_*.md present in the repository
 37
-- rationale for mock worker registration
+ 
 38
-- rationale for eslint gate modernization
+2. Produce a factual instruction inventory:
 39
-- known risks
+- filename
 40
- 
+- purpose
 41
-4. Commit Preparation
+- phases covered
 42
-Follow repository rules:
+- completion status
 43
-- git add explicit file paths only
+- whether new work is defined
 44
-- no git add -A
+ 
 45
-- no partial staging
+3. Confirm whether any source document defines work after Phase I.
 46
-- commit message should be short and conventional
+ 
 47
- 
+4. If no authoritative post–Phase I work exists, stop implementation and produce a mission-status report identifying:
 48
-5. Phase H + Phase I Handover
+- completed phases
 49
-Produce a concise handoff containing:
+- completed gates
 50
-- completed work summary
+- current repository state
 51
-- final gate results
+- missing authority source needed to continue
 52
-- all files changed
+ 
 53
-- remaining risks
+5. If an Instructions_6.md (or equivalent authoritative phase document) exists, extract:
 54
-- observations:
+- objective
 55
-- 0024 runtime traced healthy; payload mismatch caused false diagnosis
-56
-- 0026 ledger hash shape parity
-57
-- 0027 eslint flat-config/version pinning
-58
- 
-59
-6. Then Begin Next Phase
-60
-Read docs/Instructions_4.md and identify the next phase after Phase I.
-61
-Do not assume the phase name or acceptance criteria.
-62
-Extract the next phase requirements directly from the source document.
-63
-Produce:
-64
-- phase objective
-65
 - acceptance criteria
-66
-- implementation plan
-67
-- risks
-68
-- files likely to be touched
-69
-- recommended first concrete task
-70
+56
+- required deliverables
+57
+- constraints
+58
+- first implementation task
+59
  
-71
-Important:
-72
-- Do not rewrite any green Phase I functionality.
-73
-- Do not introduce additional features.
-74
-- Use repository evidence only.
-75
-- The first deliverable after close-out is the next-phase planning report sourced directly from Instructions_4.md.
+60
+Do not begin coding the next phase until an authoritative source document defines it.
+61
+ 
+62
+Deliver:
+63
+- instruction inventory
+64
+- mission status report
+65
+- next phase definition (if present)
+66
+- recommended next action based strictly on repository evidence

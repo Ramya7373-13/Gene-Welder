@@ -128,3 +128,10 @@ Phase I path... If the run completes, finish the remaining gates immediately").
       backend Jest -> all exit 0 / green. Details: `Phase I Completion Report.md`.
 
 Prepared from verified evidence; Option 1 closed the re-baseline gaps.
+
+## 6. Lessons (Instructions_5 §3)
+
+- **0024** payload-shape mismatch caused a false runtime-failure diagnosis.
+- **0026** write/read ledger entry shape must match for hash-chain validity.
+- **0027** flat ESLint config + pinned majors keep the lint gate runnable.
+- **0028** stage only explicit phase paths on a mixed tree (no `git add -A`).

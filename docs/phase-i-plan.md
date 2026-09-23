@@ -183,3 +183,10 @@ exposing + verifying existing ledger data; no real inference; no
 Pre-change green baseline for this completion run: backend `tsc --noEmit`
 exit 0, root `tsc --noEmit` exit 0, backend Jest 218/218, Playwright 1/1.
 Post-change runs prove no regressions (same numbers; see Completion Report).
+
+## 7. Lessons carried forward (Instructions_5 §3)
+
+- **0024** — runtime healthy; false stall diagnosis was payload-shape mismatch.
+- **0026** — ledger write/read shape parity required for chain verification.
+- **0027** — eslint flat-config + version pinning required for a stable lint gate.
+- **0028** — explicit-path staging only when the worktree mixes phases.
