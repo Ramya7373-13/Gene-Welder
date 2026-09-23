@@ -2,7 +2,6 @@ import request from 'supertest';
 import { app, prisma } from '../../src/server.js';
 import { shutdownPrisma } from '../../src/prisma.js';
 import { jest, describe, it, expect, beforeEach, afterEach, afterAll } from '@jest/globals';
-import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
@@ -32,6 +31,38 @@ const store: {
 let cuidCounter = 0;
 const cuid = () => `test-${++cuidCounter}`;
 
+const TEST_USER_ID = 'user-1';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-secret-never-in-production';
+
+function makeSignedCookie(sessionId: string): string {
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(sessionId).digest('hex');
+  return `${sessionId}.${sig}`;
+}
+
+function mockValidSession(sessionId = 'dna-session-1', userId = TEST_USER_ID): string {
+  const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+  jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+    id: `session-${sessionId}`,
+    userId,
+    sessionHash,
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    lastSeenAt: null,
+    revokedAt: null,
+    createdAt: new Date(),
+  } as any);
+  jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+    id: userId,
+    email: `${userId}@example.com`,
+    plan: 'free',
+  } as any);
+  return `mm_session=${makeSignedCookie(sessionId)}`;
+}
+
+const AUTH_COOKIE = 'mm_session=dna-session-1.' + crypto
+  .createHmac('sha256', SESSION_SECRET)
+  .update('dna-session-1')
+  .digest('hex');
+
 beforeEach(() => {
   store.experiments = new Map();
   store.files = [];
@@ -39,6 +70,8 @@ beforeEach(() => {
   store.errorRuns = [];
   store.decodeRuns = [];
   store.reports = [];
+
+  mockValidSession();
 
   jest.spyOn(prisma.dnaStorageExperiment, 'create').mockImplementation(({ data }: any) => {
     const record = { id: cuid(), createdAt: new Date(), updatedAt: new Date(), status: 'DRAFT', ...data };
@@ -123,6 +156,15 @@ beforeEach(() => {
   );
 
   jest.spyOn(prisma, '$connect').mockImplementation(() => Promise.resolve() as any);
+
+  // The route calls auditAction(...) which itself calls prisma.auditLog.create.
+  // The mock store intentionally doesn't include this model (it isn't part of
+  // the dnaStorage surface the suite covers), so route calls would otherwise hit
+  // the real dev database — which couples the test to migration state and may
+  // throw on a clean DB. Mock it as a no-op to keep the suite hermetic.
+  jest.spyOn(prisma.auditLog, 'create').mockImplementation(() =>
+    Promise.resolve({ id: cuid(), createdAt: new Date() } as any)
+  );
 });
 
 afterEach(() => {
@@ -178,6 +220,7 @@ const lowErrorProfile = (seed = 7) => ({
 async function createExperiment(title = 'Fixture round-trip') {
   const res = await request(app)
     .post('/api/dna-storage/experiments')
+    .set('Cookie', AUTH_COOKIE)
     .send({ title, description: 'integration test', userId: 'user-1' });
   expect(res.status).toBe(201);
   return res.body.id as string;
@@ -186,6 +229,7 @@ async function createExperiment(title = 'Fixture round-trip') {
 async function uploadFixture(id: string) {
   const res = await request(app)
     .post(`/api/dna-storage/experiments/${id}/upload`)
+    .set('Cookie', AUTH_COOKIE)
     .field('userId', 'user-1')
     .attach('file', FIXTURE_PATH, { contentType: 'text/plain' });
   expect(res.status).toBe(200);
@@ -193,17 +237,28 @@ async function uploadFixture(id: string) {
 }
 
 describe('DNA Archive Lab API', () => {
+  it('rejects unauthenticated requests with 401', async () => {
+    const res = await request(app).get('/api/dna-storage/experiments');
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Not authenticated' });
+  });
+
   it('creates an experiment (DRAFT)', async () => {
     const res = await request(app)
       .post('/api/dna-storage/experiments')
+      .set('Cookie', AUTH_COOKIE)
       .send({ title: 'My experiment', description: 'desc' });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('DRAFT');
     expect(res.body.id).toBeDefined();
+    expect(res.body.userId).toBe(TEST_USER_ID);
   });
 
   it('rejects an invalid create payload', async () => {
-    const res = await request(app).post('/api/dna-storage/experiments').send({ title: '' });
+    const res = await request(app)
+      .post('/api/dna-storage/experiments')
+      .set('Cookie', AUTH_COOKIE)
+      .send({ title: '' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('Invalid experiment payload');
   });
@@ -223,6 +278,7 @@ describe('DNA Archive Lab API', () => {
     const big = Buffer.alloc(1024 * 1024 + 1, 65);
     const res = await request(app)
       .post(`/api/dna-storage/experiments/${id}/upload`)
+      .set('Cookie', AUTH_COOKIE)
       .field('userId', 'user-1')
       .attach('file', big, { filename: 'big.txt', contentType: 'text/plain' });
     expect(res.status).toBe(413);
@@ -233,6 +289,7 @@ describe('DNA Archive Lab API', () => {
     const id = await createExperiment();
     const res = await request(app)
       .post(`/api/dna-storage/experiments/${id}/upload`)
+      .set('Cookie', AUTH_COOKIE)
       .field('userId', 'user-1')
       .attach('file', Buffer.from('binary-ish'), { filename: 'payload.exe', contentType: 'application/octet-stream' });
     expect(res.status).toBe(415);
@@ -245,6 +302,7 @@ describe('DNA Archive Lab API', () => {
 
     const encodeRes = await request(app)
       .post(`/api/dna-storage/experiments/${id}/encode`)
+      .set('Cookie', AUTH_COOKIE)
       .send({ encodingProfile: LEARNING_PROFILE, userId: 'user-1' });
     expect(encodeRes.status).toBe(200);
     expect(encodeRes.body.status).toBe('ENCODED');
@@ -253,6 +311,7 @@ describe('DNA Archive Lab API', () => {
 
     const simRes = await request(app)
       .post(`/api/dna-storage/experiments/${id}/simulate`)
+      .set('Cookie', AUTH_COOKIE)
       .send({ errorProfile: zeroErrorProfile(0), userId: 'user-1' });
     expect(simRes.status).toBe(200);
     expect(simRes.body.stats).toEqual({ dropped: 0, duplicated: 0, substituted: 0, inserted: 0, deleted: 0 });
@@ -260,6 +319,7 @@ describe('DNA Archive Lab API', () => {
 
     const decodeRes = await request(app)
       .post(`/api/dna-storage/experiments/${id}/decode`)
+      .set('Cookie', AUTH_COOKIE)
       .send({ errorRunId, userId: 'user-1' });
     expect(decodeRes.status).toBe(200);
     expect(decodeRes.body.success).toBe(true);
@@ -270,15 +330,20 @@ describe('DNA Archive Lab API', () => {
     // Reproducibility: decoding again with the same seed gives the same result.
     const decodeRes2 = await request(app)
       .post(`/api/dna-storage/experiments/${id}/decode`)
+      .set('Cookie', AUTH_COOKIE)
       .send({ errorRunId, userId: 'user-1' });
     expect(decodeRes2.body.success).toBe(true);
     expect(decodeRes2.body.recoveredChecksum).toBe(decodeRes.body.recoveredChecksum);
 
     // Report is available in both formats.
-    const reportJson = await request(app).get(`/api/dna-storage/experiments/${id}/report?format=json`);
+    const reportJson = await request(app)
+      .get(`/api/dna-storage/experiments/${id}/report?format=json`)
+      .set('Cookie', AUTH_COOKIE);
     expect(reportJson.status).toBe(200);
     expect(reportJson.body.decodeOutcome.success).toBe(true);
-    const reportMd = await request(app).get(`/api/dna-storage/experiments/${id}/report?format=markdown`);
+    const reportMd = await request(app)
+      .get(`/api/dna-storage/experiments/${id}/report?format=markdown`)
+      .set('Cookie', AUTH_COOKIE);
     expect(reportMd.status).toBe(200);
     expect(reportMd.text).toContain('Not for clinical, biological, or laboratory decision-making');
   });
@@ -289,6 +354,7 @@ describe('DNA Archive Lab API', () => {
 
     const encodeRes = await request(app)
       .post(`/api/dna-storage/experiments/${id}/encode`)
+      .set('Cookie', AUTH_COOKIE)
       .send({
         encodingProfile: { ...LEARNING_PROFILE, mode: 'constraint-aware', redundancyFactor: 2 },
         userId: 'user-1',
@@ -301,11 +367,13 @@ describe('DNA Archive Lab API', () => {
     for (let seed = 1; seed <= 10 && !recovered; seed++) {
       const simRes = await request(app)
         .post(`/api/dna-storage/experiments/${id}/simulate`)
+        .set('Cookie', AUTH_COOKIE)
         .send({ errorProfile: lowErrorProfile(seed), userId: 'user-1' });
       expect(simRes.status).toBe(200);
 
       const decodeRes = await request(app)
         .post(`/api/dna-storage/experiments/${id}/decode`)
+        .set('Cookie', AUTH_COOKIE)
         .send({ errorRunId: simRes.body.errorRunId, userId: 'user-1' });
       expect(decodeRes.status).toBe(200);
       recovered = decodeRes.body.success === true;
@@ -318,10 +386,12 @@ describe('DNA Archive Lab API', () => {
     await uploadFixture(id);
     await request(app)
       .post(`/api/dna-storage/experiments/${id}/encode`)
+      .set('Cookie', AUTH_COOKIE)
       .send({ encodingProfile: LEARNING_PROFILE, userId: 'user-1' });
 
     const simRes = await request(app)
       .post(`/api/dna-storage/experiments/${id}/simulate`)
+      .set('Cookie', AUTH_COOKIE)
       .send({
         errorProfile: { ...zeroErrorProfile(3), strandDropoutRate: 1 },
         userId: 'user-1',
@@ -330,6 +400,7 @@ describe('DNA Archive Lab API', () => {
 
     const decodeRes = await request(app)
       .post(`/api/dna-storage/experiments/${id}/decode`)
+      .set('Cookie', AUTH_COOKIE)
       .send({ errorRunId: simRes.body.errorRunId, userId: 'user-1' });
     expect(decodeRes.status).toBe(200);
     expect(decodeRes.body.success).toBe(false);
@@ -339,18 +410,32 @@ describe('DNA Archive Lab API', () => {
   it('returns 404 for an unknown experiment id (ownership guard per existing convention)', async () => {
     const res = await request(app)
       .post('/api/dna-storage/experiments/unknown-id/encode')
+      .set('Cookie', AUTH_COOKIE)
       .send({ encodingProfile: LEARNING_PROFILE });
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'Experiment not found' });
   });
 
-  it('returns 404 when a userId does not match the experiment owner', async () => {
+  it('returns 404 when a different session user does not match the experiment owner', async () => {
     const id = await createExperiment();
     await uploadFixture(id);
+    const otherUserCookie = mockValidSession('dna-session-other', 'user-other');
     const res = await request(app)
       .post(`/api/dna-storage/experiments/${id}/encode`)
+      .set('Cookie', otherUserCookie)
       .send({ encodingProfile: LEARNING_PROFILE, userId: 'someone-else' });
     expect(res.status).toBe(404);
+    // restore primary session mock for subsequent tests in this file
+    mockValidSession();
+  });
+
+  it('ignores body userId and attributes ownership to the session user', async () => {
+    const res = await request(app)
+      .post('/api/dna-storage/experiments')
+      .set('Cookie', AUTH_COOKIE)
+      .send({ title: 'Spoof attempt', userId: 'attacker' });
+    expect(res.status).toBe(201);
+    expect(res.body.userId).toBe(TEST_USER_ID);
   });
 
   it('lists experiments and strands (paginated)', async () => {
@@ -358,13 +443,16 @@ describe('DNA Archive Lab API', () => {
     await uploadFixture(id);
     await request(app)
       .post(`/api/dna-storage/experiments/${id}/encode`)
+      .set('Cookie', AUTH_COOKIE)
       .send({ encodingProfile: LEARNING_PROFILE, userId: 'user-1' });
 
-    const listRes = await request(app).get('/api/dna-storage/experiments');
+    const listRes = await request(app).get('/api/dna-storage/experiments').set('Cookie', AUTH_COOKIE);
     expect(listRes.status).toBe(200);
     expect(Array.isArray(listRes.body)).toBe(true);
 
-    const strandsRes = await request(app).get(`/api/dna-storage/experiments/${id}/strands?page=1&pageSize=10`);
+    const strandsRes = await request(app)
+      .get(`/api/dna-storage/experiments/${id}/strands?page=1&pageSize=10`)
+      .set('Cookie', AUTH_COOKIE);
     expect(strandsRes.status).toBe(200);
     expect(strandsRes.body.total).toBeGreaterThanOrEqual(1);
     expect(strandsRes.body.strands[0].sequence).toMatch(/^[ACGT]+$/);
@@ -372,7 +460,9 @@ describe('DNA Archive Lab API', () => {
 
   it('deletes an experiment', async () => {
     const id = await createExperiment('To delete');
-    const res = await request(app).delete(`/api/dna-storage/experiments/${id}`);
+    const res = await request(app)
+      .delete(`/api/dna-storage/experiments/${id}`)
+      .set('Cookie', AUTH_COOKIE);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ deleted: true, id });
   });

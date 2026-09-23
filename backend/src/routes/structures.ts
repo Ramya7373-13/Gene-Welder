@@ -1,19 +1,35 @@
 // Protein structure upload / retrieval endpoints.
 // Mounted at /api by server.ts.
+// Session-gated writes/reads; GET /structures/file only resolves paths under
+// the backend storage root (no arbitrary filesystem read).
 
 import express from 'express';
 import crypto from 'crypto';
 import fs from 'fs/promises';
+import path from 'path';
 import { prisma } from '../prisma.js';
 import { logger } from '../utils/logger.js';
 import { auditAction } from '../utils/redactor.js';
 import { fetchAlphaFoldStructureBackend } from '../utils/alphafoldUtil.js';
 import { upload, pdbUpload } from '../lib/uploads.js';
+import { requireSession } from '../lib/requireSession.js';
 
 const router = express.Router();
 
+const STRUCTURE_STORAGE_ROOTS = [
+  path.resolve('./storage'),
+  path.resolve(process.cwd(), 'storage'),
+];
+
+function isAllowedStructurePath(filePath: string): boolean {
+  const resolved = path.resolve(filePath);
+  return STRUCTURE_STORAGE_ROOTS.some(
+    (root) => resolved === root || resolved.startsWith(root + path.sep)
+  );
+}
+
 // POST /structures - Upload protein structure file
-router.post('/structures', upload.single('file'), async (req, res) => {
+router.post('/structures', requireSession, upload.single('file'), async (req, res) => {
   try {
     if (!req.file || !req.body.variantId) {
       return res.status(400).json({ error: 'Missing file or variantId' });
@@ -50,7 +66,7 @@ router.post('/structures', upload.single('file'), async (req, res) => {
 });
 
 // POST /variants/upload-pdb - Attach a .pdb structure to a Variant's WT/mutant slot
-router.post('/variants/upload-pdb', pdbUpload.single('file'), async (req, res) => {
+router.post('/variants/upload-pdb', requireSession, pdbUpload.single('file'), async (req, res) => {
   const { variantId, slot } = req.body as { variantId?: string; slot?: string };
 
   // fileFilter rejects non-.pdb uploads (leaves req.file undefined); also covers a missing file.
@@ -127,11 +143,14 @@ router.post('/variants/upload-pdb', pdbUpload.single('file'), async (req, res) =
   }
 });
 
-// GET /structures/file - Fetch PDB file content by path
-router.get('/structures/file', async (req, res) => {
+// GET /structures/file - Fetch PDB file content by path (storage-root only)
+router.get('/structures/file', requireSession, async (req, res) => {
   const { path: filePath } = req.query;
   if (!filePath || typeof filePath !== 'string') {
     return res.status(400).json({ error: 'Missing file path' });
+  }
+  if (!isAllowedStructurePath(filePath)) {
+    return res.status(403).json({ error: 'File path not allowed' });
   }
   try {
     const content = await fs.readFile(filePath, 'utf-8');
@@ -155,7 +174,7 @@ router.get('/alphafold/:gene', async (req, res) => {
 });
 
 // GET /test-storage - Verify storage readiness
-router.get('/test-storage', async (req, res) => {
+router.get('/test-storage', requireSession, async (req, res) => {
   try {
     const count = await prisma.structureFile.count();
     return res.json({ status: 'Storage ready', structureCount: count });

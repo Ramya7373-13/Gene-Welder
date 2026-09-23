@@ -68,14 +68,18 @@ const ActionableInterventionEngine: React.FC = () => {
     setError(null);
     try {
       // Fetch risk assessments for this patient
-      const assessmentsResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/risk-assessments?patientId=${patientId}`);
+      const assessmentsResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/risk-assessments?patientId=${patientId}`, {
+        credentials: 'include'
+      });
       if (!assessmentsResponse.ok) throw new Error('Failed to fetch risk assessments');
       const assessments: RiskAssessment[] = await assessmentsResponse.json();
 
       // For each assessment, fetch the corresponding interventions
       const interventionData = await Promise.all(
         assessments.map(async (assessment) => {
-          const interventionsResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/interventions?riskAssessmentId=${assessment.id}`);
+          const interventionsResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/interventions?riskAssessmentId=${assessment.id}`, {
+            credentials: 'include'
+          });
           if (!interventionsResponse.ok) throw new Error('Failed to fetch interventions');
           const interventions: Intervention[] = await interventionsResponse.json();
           
@@ -150,7 +154,9 @@ const ActionableInterventionEngine: React.FC = () => {
     const totalInterventions = interventions.flatMap(a => a.interventions).length;
     const implementedInterventions = interventions.flatMap(a => a.interventions).filter(i => i.implemented).length;
     const preventableYears = interventions.flatMap(a => a.interventions).reduce((sum, i) => sum + (i.preventableYears || 0), 0);
-    const highPriorityInterventions = interventions.flatMap(a => a.interventions).filter(i => a.severityLevel === 'high' || a.severityLevel === 'actionable').length;
+    const highPriorityInterventions = interventions
+      .filter(a => a.severityLevel === 'high' || a.severityLevel === 'actionable')
+      .flatMap(a => a.interventions).length;
     
     return {
       totalInterventions,

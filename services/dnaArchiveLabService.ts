@@ -31,6 +31,7 @@ export const dnaArchiveLabService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res, 'Failed to create experiment'));
     return res.json();
@@ -43,6 +44,7 @@ export const dnaArchiveLabService = {
     const res = await fetch(`${API_BASE}/api/dna-storage/experiments/${experimentId}/upload`, {
       method: 'POST',
       body: form,
+      credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res, 'Failed to upload file'));
     return res.json();
@@ -57,6 +59,7 @@ export const dnaArchiveLabService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ encodingProfile, userId }),
+      credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res, 'Failed to encode experiment'));
     return res.json();
@@ -71,6 +74,7 @@ export const dnaArchiveLabService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ errorProfile, userId }),
+      credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res, 'Failed to simulate channel errors'));
     return res.json();
@@ -85,13 +89,16 @@ export const dnaArchiveLabService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ errorRunId, userId }),
+      credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res, 'Failed to decode experiment'));
     return res.json();
   },
 
   async getExperiment(id: string): Promise<DnaStorageExperiment> {
-    const res = await fetch(`${API_BASE}/api/dna-storage/experiments/${id}`);
+    const res = await fetch(`${API_BASE}/api/dna-storage/experiments/${id}`, {
+      credentials: 'include',
+    });
     if (!res.ok) throw new Error(await readError(res, 'Failed to fetch experiment'));
     return res.json();
   },
@@ -106,7 +113,8 @@ export const dnaArchiveLabService = {
     if (opts.q) params.set('q', opts.q);
     const qs = params.toString();
     const res = await fetch(
-      `${API_BASE}/api/dna-storage/experiments/${id}/strands${qs ? `?${qs}` : ''}`
+      `${API_BASE}/api/dna-storage/experiments/${id}/strands${qs ? `?${qs}` : ''}`,
+      { credentials: 'include' }
     );
     if (!res.ok) throw new Error(await readError(res, 'Failed to fetch strands'));
     return res.json();
@@ -114,7 +122,8 @@ export const dnaArchiveLabService = {
 
   async getReport(id: string, format: 'json' | 'markdown' = 'json'): Promise<unknown> {
     const res = await fetch(
-      `${API_BASE}/api/dna-storage/experiments/${id}/report?format=${format}`
+      `${API_BASE}/api/dna-storage/experiments/${id}/report?format=${format}`,
+      { credentials: 'include' }
     );
     if (!res.ok) throw new Error(await readError(res, 'Failed to fetch report'));
     if (format === 'markdown') return res.text();
@@ -122,7 +131,9 @@ export const dnaArchiveLabService = {
   },
 
   async listExperiments(): Promise<DnaStorageExperiment[]> {
-    const res = await fetch(`${API_BASE}/api/dna-storage/experiments`);
+    const res = await fetch(`${API_BASE}/api/dna-storage/experiments`, {
+      credentials: 'include',
+    });
     if (!res.ok) throw new Error(await readError(res, 'Failed to list experiments'));
     return res.json();
   },
@@ -132,6 +143,7 @@ export const dnaArchiveLabService = {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userId ? { userId } : {}),
+      credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res, 'Failed to delete experiment'));
     return res.json();

@@ -21,63 +21,98 @@ afterEach(() => {
     jest.restoreAllMocks();
 });
 
+// Shared session helpers, hoisted so every describe block can use them.
+// Matches backend/src/lib/session.ts signSession fallback (not auth.test.ts's
+// different default).
+const TEST_USER_ID = 'test-user-id';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-secret-never-in-production';
+
+function makeSignedCookie(sessionId: string): string {
+    const sig = crypto.createHmac('sha256', SESSION_SECRET).update(sessionId).digest('hex');
+    return `${sessionId}.${sig}`;
+}
+
+function mockValidSession(sessionId = 'test-session-token'): string {
+    const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
+    jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
+        id: 'session-row-id',
+        userId: TEST_USER_ID,
+        sessionHash,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        lastSeenAt: null,
+        revokedAt: null,
+        createdAt: new Date()
+    } as any);
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+        id: TEST_USER_ID,
+        email: 'test@example.com',
+        plan: 'free'
+    } as any);
+    return `mm_session=${makeSignedCookie(sessionId)}`;
+}
+
 describe('API Integration', () => {
     describe('GET /api/users/:id', () => {
-        it('should return user object on success', async () => {
-            const mockUser = { id: '1', name: 'Test' };
+        it('should return 401 when not authenticated', async () => {
+            const res = await request(app).get(`/api/users/${TEST_USER_ID}`);
+            expect(res.status).toBe(401);
+            expect(res.body).toEqual({ error: 'Not authenticated' });
+        });
+
+        it('should return own user object on success', async () => {
+            const cookie = mockValidSession();
+            const mockUser = { id: TEST_USER_ID, name: 'Test', email: 'test@example.com', plan: 'free' };
             (prisma.user.findUnique as any).mockResolvedValue(mockUser);
 
-            const res = await request(app).get('/api/users/1');
+            const res = await request(app)
+                .get(`/api/users/${TEST_USER_ID}`)
+                .set('Cookie', cookie);
             expect(res.status).toBe(200);
             expect(res.body).toEqual(mockUser);
         });
 
-        it('should return 404 error object when user not found', async () => {
-            (prisma.user.findUnique as any).mockResolvedValue(null);
+        it('should return 404 when requesting another user id (ownership check)', async () => {
+            const cookie = mockValidSession();
 
-            const res = await request(app).get('/api/users/999');
+            const res = await request(app)
+                .get('/api/users/someone-else')
+                .set('Cookie', cookie);
+            expect(res.status).toBe(404);
+            expect(res.body).toEqual({ error: 'User not found' });
+        });
+
+        it('should return 404 error object when own user not found', async () => {
+            const cookie = mockValidSession();
+            // getSessionFromCookie also calls user.findUnique, and returns null
+            // (401) if the user is missing. So the session load must still
+            // succeed — only the route's own lookup returns null.
+            (prisma.user.findUnique as any)
+                .mockResolvedValueOnce({ id: TEST_USER_ID, email: 'test@example.com', plan: 'free' })
+                .mockResolvedValueOnce(null);
+
+            const res = await request(app)
+                .get(`/api/users/${TEST_USER_ID}`)
+                .set('Cookie', cookie);
             expect(res.status).toBe(404);
             expect(res.body).toEqual({ error: 'User not found' });
         });
 
         it('should return 500 error object on database error', async () => {
-            (prisma.user.findUnique as any).mockRejectedValue(new Error('DB error'));
+            const cookie = mockValidSession();
+            // Same ordering: session load succeeds, route lookup throws.
+            (prisma.user.findUnique as any)
+                .mockResolvedValueOnce({ id: TEST_USER_ID, email: 'test@example.com', plan: 'free' })
+                .mockRejectedValueOnce(new Error('DB error'));
 
-            const res = await request(app).get('/api/users/1');
+            const res = await request(app)
+                .get(`/api/users/${TEST_USER_ID}`)
+                .set('Cookie', cookie);
             expect(res.status).toBe(500);
             expect(res.body).toEqual({ error: 'Failed to fetch user' });
         });
     });
 
     describe('GET /api/analyses/:id', () => {
-        const TEST_USER_ID = 'test-user-id';
-        // Match backend/src/server.ts signSession fallback (not auth.test.ts's different default).
-        const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-secret-never-in-production';
-
-        function makeSignedCookie(sessionId: string): string {
-            const sig = crypto.createHmac('sha256', SESSION_SECRET).update(sessionId).digest('hex');
-            return `${sessionId}.${sig}`;
-        }
-
-        function mockValidSession(sessionId = 'test-session-token'): string {
-            const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex');
-            jest.spyOn(prisma.session, 'findUnique').mockResolvedValue({
-                id: 'session-row-id',
-                userId: TEST_USER_ID,
-                sessionHash,
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                lastSeenAt: null,
-                revokedAt: null,
-                createdAt: new Date()
-            } as any);
-            jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
-                id: TEST_USER_ID,
-                email: 'test@example.com',
-                plan: 'free'
-            } as any);
-            return `mm_session=${makeSignedCookie(sessionId)}`;
-        }
-
         it('should return 401 when not authenticated', async () => {
             const res = await request(app).get('/api/analyses/a1');
             expect(res.status).toBe(401);
@@ -139,6 +174,7 @@ describe('API Integration', () => {
 
             const res = await request(app)
                 .post('/api/variants/upload-pdb')
+                .set('Cookie', mockValidSession())
                 .field('variantId', 'variant-cuid-1')
                 .field('slot', 'wildtype')
                 .attach('file', PDB_FIXTURE);
@@ -158,9 +194,21 @@ describe('API Integration', () => {
             }
         });
 
+        it('rejects unauthenticated upload with 401', async () => {
+            // Auth runs before multer; POST fields only (no multipart body) so
+            // the early 401 doesn't race an unread multipart stream (ECONNRESET).
+            const res = await request(app)
+                .post('/api/variants/upload-pdb')
+                .set('Content-Type', 'application/json')
+                .send({ variantId: 'variant-cuid-1', slot: 'wildtype' });
+            expect(res.status).toBe(401);
+            expect(res.body).toEqual({ error: 'Not authenticated' });
+        });
+
         it('rejects a non-.pdb upload with 400 and never touches the DB', async () => {
             const res = await request(app)
                 .post('/api/variants/upload-pdb')
+                .set('Cookie', mockValidSession())
                 .field('variantId', 'variant-cuid-1')
                 .field('slot', 'wildtype')
                 .attach('file', Buffer.from('not a pdb'), 'notes.txt');
@@ -175,6 +223,7 @@ describe('API Integration', () => {
 
             const res = await request(app)
                 .post('/api/variants/upload-pdb')
+                .set('Cookie', mockValidSession())
                 .field('variantId', 'does-not-exist')
                 .field('slot', 'mutant')
                 .attach('file', PDB_FIXTURE);
@@ -189,6 +238,7 @@ describe('API Integration', () => {
 
             const res = await request(app)
                 .post('/api/variants/upload-pdb')
+                .set('Cookie', mockValidSession())
                 .field('variantId', 'variant-cuid-1')
                 .attach('file', PDB_FIXTURE);
 

@@ -1,10 +1,9 @@
 // DNA Archive Lab API routes (Phase 1).
 // Mounted once from server.ts: app.use('/api/dna-storage', dnaStorageRouter).
-// Conventions: Zod validation (first backend feature to use it), optional userId
-// from request body (no session/auth system exists in this codebase — ownership
-// is record-id lookup plus a userId match when both are present), structured
-// { error } responses, and audit logging of METADATA ONLY (never sequences or
-// file contents) via auditAction.
+// Conventions: Zod validation; session cookie required (lib/requireSession.ts);
+// acting user is session.userId only (body userId is ignored for identity);
+// structured { error } responses; audit logging of METADATA ONLY (never sequences
+// or file contents) via auditAction.
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import crypto from 'crypto';
@@ -15,6 +14,8 @@ import { prisma } from '../prisma.js';
 import type { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { auditAction } from '../utils/redactor.js';
+import { requireSession } from '../lib/requireSession.js';
+import type { DBSession } from '../lib/session.js';
 import type { DnaStrand, EncodingProfile, ErrorProfile } from '../domain/dnaStorage/types.js';
 import { PRNG_NAME, PRNG_VERSION } from '../domain/dnaStorage/types.js';
 import { getCodec } from '../domain/dnaStorage/codecRegistry.js';
@@ -23,6 +24,7 @@ import { generateReport } from '../domain/dnaStorage/reportGenerator.js';
 import { encodingOverhead } from '../domain/dnaStorage/analytics.js';
 
 export const dnaStorageRouter = Router();
+dnaStorageRouter.use(requireSession);
 
 // --- Validation schemas (Zod) -------------------------------------------------
 
@@ -124,9 +126,9 @@ type ExperimentRecord = {
 };
 
 /**
- * "Ownership" per this codebase's convention: there is no session/login system.
- * Unknown ids 404; when both the record and the request carry a userId and they
- * differ, we also 404 rather than leak the record's existence.
+ * Ownership: record-id lookup plus session.userId match when the record has an
+ * owner (legacy records may have null userId). Unknown ids 404; mismatched
+ * owners 404 rather than leak the record's existence. Never trusts body userId.
  */
 async function findOwnedExperiment(id: string, userId?: string): Promise<ExperimentRecord | null> {
   const experiment = await prisma.dnaStorageExperiment.findUnique({ where: { id } });
@@ -151,18 +153,19 @@ function zodErrorMessage(error: z.ZodError): string {
 
 // --- Routes --------------------------------------------------------------------
 
-// POST /experiments — create a DRAFT experiment
+// POST /experiments — create a DRAFT experiment (owner = session.userId)
 dnaStorageRouter.post('/experiments', async (req: Request, res: Response) => {
   const parsed = createExperimentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: `Invalid experiment payload: ${zodErrorMessage(parsed.error)}` });
   }
+  const session = res.locals.session as DBSession;
   try {
     const experiment = await prisma.dnaStorageExperiment.create({
       data: {
         title: parsed.data.title,
         description: parsed.data.description,
-        userId: parsed.data.userId,
+        userId: session.userId,
         status: 'DRAFT',
       },
     });
@@ -173,7 +176,7 @@ dnaStorageRouter.post('/experiments', async (req: Request, res: Response) => {
       'DnaStorageExperiment',
       null,
       experimentAuditMeta(experiment),
-      parsed.data.userId
+      session.userId
     );
     return res.status(201).json(experiment);
   } catch (error) {
@@ -189,7 +192,7 @@ dnaStorageRouter.post(
   dnaUploadErrorHandler,
   async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userId = (req.body?.userId as string | undefined) ?? undefined;
+  const session = res.locals.session as DBSession;
   const file = req.file;
 
   if ((req as any)._fileRejected) {
@@ -203,7 +206,7 @@ dnaStorageRouter.post(
   }
 
   try {
-    const experiment = await findOwnedExperiment(id, userId);
+    const experiment = await findOwnedExperiment(id, session.userId);
     if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
 
     const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
@@ -239,7 +242,7 @@ dnaStorageRouter.post(
       'DnaStorageExperiment',
       null,
       experimentAuditMeta(updated, { fileId: record.id, sizeBytes: file.size }),
-      userId
+      session.userId
     );
     return res.json({
       sourceFileName: updated.sourceFileName,
@@ -262,9 +265,10 @@ dnaStorageRouter.post('/experiments/:id/encode', async (req: Request, res: Respo
     return res.status(400).json({ error: `Invalid encode payload: ${zodErrorMessage(parsed.error)}` });
   }
   const profile = parsed.data.encodingProfile as EncodingProfile;
+  const session = res.locals.session as DBSession;
 
   try {
-    const experiment = await findOwnedExperiment(id, parsed.data.userId);
+    const experiment = await findOwnedExperiment(id, session.userId);
     if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
     if (!experiment.sourceSha256) {
       return res.status(409).json({ error: 'Upload a source file before encoding' });
@@ -336,7 +340,7 @@ dnaStorageRouter.post('/experiments/:id/encode', async (req: Request, res: Respo
         encodingOverhead: encodingOverhead(rawPayloadBases, totalBases),
         sourceBytesPurged: true,
       }),
-      parsed.data.userId
+      session.userId
     );
 
     return res.json({
@@ -366,9 +370,10 @@ dnaStorageRouter.post('/experiments/:id/simulate', async (req: Request, res: Res
     return res.status(400).json({ error: `Invalid simulate payload: ${zodErrorMessage(parsed.error)}` });
   }
   const errorProfile = parsed.data.errorProfile as ErrorProfile;
+  const session = res.locals.session as DBSession;
 
   try {
-    const experiment = await findOwnedExperiment(id, parsed.data.userId);
+    const experiment = await findOwnedExperiment(id, session.userId);
     if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
 
     const strandRecords = await prisma.dnaStorageStrand.findMany({ where: { experimentId: id } });
@@ -408,7 +413,7 @@ dnaStorageRouter.post('/experiments/:id/simulate', async (req: Request, res: Res
       'DnaStorageExperiment',
       null,
       experimentAuditMeta(updated, { errorRunId: errorRun.id, seed: errorProfile.seed, ...stats }),
-      parsed.data.userId
+      session.userId
     );
 
     // Estimated affected strands before decode (from the deterministic stats).
@@ -436,8 +441,10 @@ dnaStorageRouter.post('/experiments/:id/decode', async (req: Request, res: Respo
     return res.status(400).json({ error: `Invalid decode payload: ${zodErrorMessage(parsed.error)}` });
   }
 
+  const session = res.locals.session as DBSession;
+
   try {
-    const experiment = await findOwnedExperiment(id, parsed.data.userId);
+    const experiment = await findOwnedExperiment(id, session.userId);
     if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
     if (!experiment.sourceSha256 || !experiment.encodingProfileJson) {
       return res.status(409).json({ error: 'Experiment must be encoded before decoding' });
@@ -555,7 +562,7 @@ dnaStorageRouter.post('/experiments/:id/decode', async (req: Request, res: Respo
       'DnaStorageExperiment',
       null,
       experimentAuditMeta(updated, { decodeRunId: decodeRun.id, success, missingStrands, errorRunId }),
-      parsed.data.userId
+      session.userId
     );
 
     return res.json({ ...decodeResult, decodeRunId: decodeRun.id, reportAvailable: true });
@@ -571,6 +578,7 @@ dnaStorageRouter.post('/experiments/:id/decode', async (req: Request, res: Respo
 // GET /experiments/:id — experiment details with counts
 dnaStorageRouter.get('/experiments/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  const session = res.locals.session as DBSession;
   try {
     const experiment = await prisma.dnaStorageExperiment.findUnique({
       where: { id },
@@ -579,6 +587,9 @@ dnaStorageRouter.get('/experiments/:id', async (req: Request, res: Response) => 
       },
     });
     if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
+    if (experiment.userId && experiment.userId !== session.userId) {
+      return res.status(404).json({ error: 'Experiment not found' });
+    }
     return res.json(experiment);
   } catch (error) {
     logger.error('dna-storage get experiment failed:', error);
@@ -592,8 +603,9 @@ dnaStorageRouter.get('/experiments/:id/strands', async (req: Request, res: Respo
   const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
   const pageSize = Math.min(200, Math.max(1, parseInt(String(req.query.pageSize ?? '50'), 10) || 50));
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+  const session = res.locals.session as DBSession;
   try {
-    const experiment = await prisma.dnaStorageExperiment.findUnique({ where: { id } });
+    const experiment = await findOwnedExperiment(id, session.userId);
     if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
 
     const where = {
@@ -620,7 +632,10 @@ dnaStorageRouter.get('/experiments/:id/strands', async (req: Request, res: Respo
 dnaStorageRouter.get('/experiments/:id/report', async (req: Request, res: Response) => {
   const { id } = req.params;
   const format = String(req.query.format ?? 'json').toLowerCase();
+  const session = res.locals.session as DBSession;
   try {
+    const experiment = await findOwnedExperiment(id, session.userId);
+    if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
     const report = await prisma.dnaStorageReport.findFirst({
       where: { experimentId: id },
       orderBy: { createdAt: 'desc' },
@@ -636,10 +651,14 @@ dnaStorageRouter.get('/experiments/:id/report', async (req: Request, res: Respon
   }
 });
 
-// GET /experiments — list experiments, newest first
+// GET /experiments — list experiments for the session user, newest first
 dnaStorageRouter.get('/experiments', async (req: Request, res: Response) => {
+  const session = res.locals.session as DBSession;
   try {
     const experiments = await prisma.dnaStorageExperiment.findMany({
+      where: {
+        OR: [{ userId: session.userId }, { userId: null }],
+      },
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: { _count: { select: { strands: true, decodeRuns: true } } },
@@ -654,9 +673,9 @@ dnaStorageRouter.get('/experiments', async (req: Request, res: Response) => {
 // DELETE /experiments/:id — cascade delete + remove any stored file artifacts
 dnaStorageRouter.delete('/experiments/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userId = (req.body?.userId as string | undefined) ?? undefined;
+  const session = res.locals.session as DBSession;
   try {
-    const experiment = await findOwnedExperiment(id, userId);
+    const experiment = await findOwnedExperiment(id, session.userId);
     if (!experiment) return res.status(404).json({ error: 'Experiment not found' });
 
     const files = await prisma.dnaStorageFile.findMany({ where: { experimentId: id } });
@@ -675,7 +694,7 @@ dnaStorageRouter.delete('/experiments/:id', async (req: Request, res: Response) 
       'DnaStorageExperiment',
       experimentAuditMeta(experiment),
       null,
-      userId
+      session.userId
     );
     return res.json({ deleted: true, id });
   } catch (error) {

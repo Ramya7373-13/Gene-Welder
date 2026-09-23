@@ -76,7 +76,9 @@ const PersonalGenomeRiskDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/risk-assessments?patientId=${patientId}`);
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/risk-assessments?patientId=${patientId}`, {
+        credentials: 'include'
+      });
       if (!response.ok) throw new Error('Failed to fetch risk assessments');
       const data = await response.json();
       setAssessments(data);
@@ -89,7 +91,9 @@ const PersonalGenomeRiskDashboard: React.FC = () => {
 
   const fetchInterventions = async (assessmentId: string) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/interventions?riskAssessmentId=${assessmentId}`);
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/interventions?riskAssessmentId=${assessmentId}`, {
+        credentials: 'include'
+      });
       if (!response.ok) throw new Error('Failed to fetch interventions');
       const data = await response.json();
       setInterventions(data);

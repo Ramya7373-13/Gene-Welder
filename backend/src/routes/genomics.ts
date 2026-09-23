@@ -3,15 +3,18 @@
 //
 // NOTE: /spliceai returns 503 with source:"SIMULATION" when the upstream is
 // unavailable — that fail-closed shape is part of the API contract.
+// Session-gated per route (not router.use — this router is mounted at /api
+// root, so router-wide middleware would run for unrelated /api/* paths).
 
 import express from 'express';
 import { prisma } from '../prisma.js';
 import { logger } from '../utils/logger.js';
 import { runSpliceAi } from '../utils/spliceaiUtil.js';
+import { requireSession } from '../lib/requireSession.js';
 
 const router = express.Router();
 
-router.post('/spliceai', async (req, res) => {
+router.post('/spliceai', requireSession, async (req, res) => {
   const { gene, variant, chromosome, position, reference, alternate } = req.body as {
     gene?: string;
     variant?: string;
@@ -38,7 +41,7 @@ router.post('/spliceai', async (req, res) => {
 });
 
 // Test clinical variant schema endpoint
-router.get('/test-schema', async (req, res) => {
+router.get('/test-schema', requireSession, async (req, res) => {
   try {
     const count = await prisma.variant.count();
     return res.json({ status: 'Schema ready', variantCount: count });

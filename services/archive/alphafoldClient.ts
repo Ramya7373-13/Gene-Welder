@@ -28,7 +28,7 @@ interface FusionPredictionRequest {
 }
 
 // Import UNIPROT mapping from constants
-import { UNIPROT_MAP } from '../constants';
+import { UNIPROT_MAP } from '../../constants';
 
 export class AlphaFold3ProductionClient {
   private baseUrl: string = 'https://api.alphafold3.ebi.ac.uk';
@@ -204,6 +204,7 @@ export const fetchAlphaFoldStructure = async (gene: string): Promise<string> => 
     const backendUrl = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:5000';
     const uploadResponse = await fetch(`${backendUrl}/api/structures`, {
       method: 'POST',
+      credentials: 'include',
       body: formData
     });
 

@@ -1,14 +1,33 @@
 // Splicing analysis, sharing, and comment endpoints.
 // Mounted at /api by server.ts.
+// Actor identity is always the session cookie — never body.userId.
 
 import express from 'express';
 import { prisma } from '../prisma.js';
 import { logger } from '../utils/logger.js';
-import { getSessionFromCookie } from '../lib/session.js';
+import { getSessionFromCookie, type DBSession } from '../lib/session.js';
 import { reserveUsage } from '../lib/metering.js';
 import { configuredFrontendUrl } from '../lib/config.js';
 
 const router = express.Router();
+
+async function requireCollabSession(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+): Promise<void> {
+  try {
+    const session = await getSessionFromCookie(req);
+    if (!session) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    res.locals.session = session as DBSession;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
 
 // Splicing analysis routes
 router.post('/splicing', async (req, res) => {
@@ -50,15 +69,16 @@ router.post('/splicing', async (req, res) => {
 });
 
 // Sharing routes
-router.post('/share', async (req, res) => {
+router.post('/share', requireCollabSession, async (req, res) => {
   try {
+    const session = res.locals.session as DBSession;
     const { analysisId, sharedWithId, permissionType, isPublic } = req.body;
     const shareToken = `share_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     const sharedAccess = await prisma.sharedAccess.create({
       data: {
         analysisId,
-        sharedById: req.body.userId, // This should come from authentication
+        sharedById: session.userId,
         sharedWithId,
         shareToken,
         permissionType,
@@ -74,13 +94,14 @@ router.post('/share', async (req, res) => {
 });
 
 // Comments routes
-router.post('/comments', async (req, res) => {
+router.post('/comments', requireCollabSession, async (req, res) => {
   try {
-    const { analysisId, userId, content, parentId } = req.body;
+    const session = res.locals.session as DBSession;
+    const { analysisId, content, parentId } = req.body;
     const comment = await prisma.comment.create({
       data: {
         analysisId,
-        userId,
+        userId: session.userId,
         content,
         parentId
       }
@@ -92,7 +113,7 @@ router.post('/comments', async (req, res) => {
   }
 });
 
-router.get('/comments/:analysisId', async (req, res) => {
+router.get('/comments/:analysisId', requireCollabSession, async (req, res) => {
   try {
     const { analysisId } = req.params;
     const comments = await prisma.comment.findMany({

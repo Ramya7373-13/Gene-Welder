@@ -1,17 +1,19 @@
 // Longevity / clinical risk endpoints.
 // Mounted at /api by server.ts.
 //
-// These routes depend only on prisma + logger, so they carry no coupling to
-// session or metering middleware. Keep it that way.
+// Session-gated per route (not router.use — this router is mounted at /api
+// root, so router-wide middleware would run for unrelated /api/* paths).
+// Acting user comes only from the session (see lib/requireSession.ts).
 
 import express from 'express';
 import { prisma } from '../prisma.js';
 import { logger } from '../utils/logger.js';
+import { requireSession } from '../lib/requireSession.js';
 
 const router = express.Router();
 
 // GET /risk-assessments - Get all risk assessments for a patient
-router.get('/risk-assessments', async (req, res) => {
+router.get('/risk-assessments', requireSession, async (req, res) => {
   try {
     const { patientId } = req.query;
     const assessments = await prisma.riskAssessment.findMany({
@@ -30,7 +32,7 @@ router.get('/risk-assessments', async (req, res) => {
 });
 
 // POST /risk-assessments - Create or update a risk assessment
-router.post('/risk-assessments', async (req, res) => {
+router.post('/risk-assessments', requireSession, async (req, res) => {
   try {
     const { patientId, variantId, diseaseType, riskScore, biologicalAge,
             relativeRisk, confidenceIntervalLower, confidenceIntervalUpper,
@@ -68,7 +70,7 @@ router.post('/risk-assessments', async (req, res) => {
 });
 
 // GET /interventions - Get interventions for a risk assessment
-router.get('/interventions', async (req, res) => {
+router.get('/interventions', requireSession, async (req, res) => {
   try {
     const { riskAssessmentId } = req.query;
     const interventions = await prisma.intervention.findMany({
@@ -91,7 +93,7 @@ router.get('/interventions', async (req, res) => {
 });
 
 // POST /interventions - Create an intervention
-router.post('/interventions', async (req, res) => {
+router.post('/interventions', requireSession, async (req, res) => {
   try {
     const { riskAssessmentId, interventionType, interventionName, interventionDescription,
             evidenceLevel, expectedRiskReduction, preventableYears, recommended } = req.body;
@@ -125,7 +127,7 @@ router.post('/interventions', async (req, res) => {
 });
 
 // GET /polygenic-scores - Get polygenic scores for a patient
-router.get('/polygenic-scores', async (req, res) => {
+router.get('/polygenic-scores', requireSession, async (req, res) => {
   try {
     const { patientId } = req.query;
     const scores = await prisma.polygenicScore.findMany({
@@ -140,7 +142,7 @@ router.get('/polygenic-scores', async (req, res) => {
 });
 
 // POST /polygenic-scores - Create or update a polygenic score
-router.post('/polygenic-scores', async (req, res) => {
+router.post('/polygenic-scores', requireSession, async (req, res) => {
   try {
     const { patientId, diseaseType, prsScore, prsPercentile, referencePopulation, variantCount } = req.body;
 
@@ -176,7 +178,7 @@ router.post('/polygenic-scores', async (req, res) => {
 });
 
 // GET /family-risks - Get family risk assessments for a patient
-router.get('/family-risks', async (req, res) => {
+router.get('/family-risks', requireSession, async (req, res) => {
   try {
     const { patientId } = req.query;
     const risks = await prisma.familyRisk.findMany({
@@ -195,7 +197,7 @@ router.get('/family-risks', async (req, res) => {
 });
 
 // POST /family-risks - Create or update a family risk assessment
-router.post('/family-risks', async (req, res) => {
+router.post('/family-risks', requireSession, async (req, res) => {
   try {
     const { patientId, relativeType, relationship, variantId, recurrenceRisk,
             inheritancePattern, geneticCounselingNeeded } = req.body;
@@ -220,7 +222,7 @@ router.post('/family-risks', async (req, res) => {
 });
 
 // GET /risk-assessment/:patientId - Get risk assessment for a patient
-router.get('/risk-assessment/:patientId', async (req, res) => {
+router.get('/risk-assessment/:patientId', requireSession, async (req, res) => {
   const { patientId } = req.params;
 
   try {

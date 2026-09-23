@@ -136,7 +136,9 @@ export const backendService = {
 
     async fetchStructureFile(localPath: string): Promise<string | null> {
         try {
-            const res = await fetch(`${API_BASE}/api/structures/file?path=${encodeURIComponent(localPath)}`);
+            const res = await fetch(`${API_BASE}/api/structures/file?path=${encodeURIComponent(localPath)}`, {
+                credentials: 'include'
+            });
             if (res.ok) {
                 return await res.text();
             }

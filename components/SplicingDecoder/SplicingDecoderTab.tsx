@@ -265,7 +265,7 @@ const ConfidenceMeter: React.FC<{ confidence: number }> = memo(({ confidence }) 
              </div>
              <div className={`font-mono font-black text-sm ${colorClass}`}>{confidence}%</div>
            </div>
-           <div ref={progressRef} className="w-full bg-slate-950 h-2 rounded-full overflow-hidden mb-2 shadow-[inset_0_0_8px_rgba(0,0,0,0.8)] border border-slate-750 relative z-10" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Prediction Confidence">
+           <div ref={progressRef} className="w-full bg-slate-950 h-2 rounded-full overflow-hidden mb-2 shadow-[inset_0_0_8px_rgba(0,0,0,0.8)] border border-slate-750 relative z-10" role="progressbar" aria-valuenow={0} aria-valuemin={0} aria-valuemax={100} aria-label="Prediction Confidence">
               <div 
                 className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_12px_rgba(59,130,246,0.5)] ${barColor} ${getWidthClass(width)}`} 
               ></div>
@@ -531,7 +531,8 @@ const SplicingDecoderTab: React.FC = () => {
               position: input.position ? Number(input.position) : undefined,
               reference: input.reference || undefined,
               alternate: input.alternate || undefined
-            })
+            }),
+            credentials: 'include'
           });
           if (spliceResponse.ok) {
             const spliceData = await spliceResponse.json();
