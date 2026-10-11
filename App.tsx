@@ -1,23 +1,40 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/Tabs';
-import VariantExplainerTab from './components/VariantExplainerTab';
-import CompensatoryDesignTab from './components/CompensatoryDesignTab';
-import DiseaseTracerTab from './components/DiseaseTracerTab';
-import SplicingDecoderTab from './components/SplicingDecoder/SplicingDecoderTab';
-import DnaArchiveLabTab from './components/DnaArchiveLab/DnaArchiveLabTab';
-import AnalyticsDashboard, { ExportConfig } from './components/Analytics/AnalyticsDashboard';
-import HistoryTable from './components/Analytics/HistoryTable';
-import SettingsModal from './components/SettingsModal';
-import ShortcutsModal from './components/ShortcutsModal';
 import ToastNotification, { ToastType } from './components/ToastNotification';
-import LandingPage from './components/LandingPage';
+// Type-only import: ExportConfig is an interface, so it is erased at build time.
+// Keeping it separate lets AnalyticsDashboard itself be lazy-loaded below.
+import type { ExportConfig } from './components/Analytics/AnalyticsDashboard';
 import { DISEASE_VARIANTS } from './constants';
 import { VariantInfo } from './types';
 import { historyService, HistoryRecord } from './services/historyService';
+import { configService } from './services/configService';
 import logger from './utils/logger';
-import { BarChart3, Clock, BookOpen, Zap, Microscope, Dna, BarChart2, Archive } from 'lucide-react';
+import { BarChart3, Clock, BookOpen, Zap, Microscope, Dna, BarChart2, Archive, FlaskConical } from 'lucide-react';
+
+// Code splitting: TabsContent renders `null` when its tab is inactive, so these
+// lazy() chunks are only fetched the first time a user actually opens the tab.
+// Before this, every panel shipped in one ~1,024 kB bundle.
+const VariantExplainerTab = lazy(() => import('./components/VariantExplainerTab'));
+const CompensatoryDesignTab = lazy(() => import('./components/CompensatoryDesignTab'));
+const DiseaseTracerTab = lazy(() => import('./components/DiseaseTracerTab'));
+const SplicingDecoderTab = lazy(() => import('./components/SplicingDecoder/SplicingDecoderTab'));
+const DnaArchiveLabTab = lazy(() => import('./components/DnaArchiveLab/DnaArchiveLabTab'));
+const DesignStudioTab = lazy(() => import('./components/DesignStudio/DesignStudioTab'));
+const AnalyticsDashboard = lazy(() => import('./components/Analytics/AnalyticsDashboard'));
+const HistoryTable = lazy(() => import('./components/Analytics/HistoryTable'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const ShortcutsModal = lazy(() => import('./components/ShortcutsModal'));
+const LandingPage = lazy(() => import('./components/LandingPage'));
+
+// Shown while a lazy panel chunk is in flight.
+const PanelFallback = () => (
+  <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
+    <span className="sr-only">Loading panel…</span>
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-400" />
+  </div>
+);
 
 // Theme Definitions
 export const THEMES = [
@@ -33,7 +50,7 @@ export const THEMES = [
   { id: 'slate', name: 'Gray Blue', primary: '#B0BEC5', hover: '#90A4AE' },
 ];
 
-const validTabs = ['explainer', 'design', 'tracer', 'splicing', 'archive', 'analytics'];
+const validTabs = ['explainer', 'design', 'tracer', 'splicing', 'archive', 'studio', 'analytics'];
 
 function getInitialTab() {
   const tab = new URLSearchParams(window.location.search).get('tab');
@@ -151,11 +168,12 @@ function WorkspaceApp() {
       <Header onOpenSettings={() => setIsSettingsOpen(true)} source={activeSource} />
 
       <main className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+        <Suspense fallback={<PanelFallback />}>
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-8">
           <div className="flex justify-center">
             <TabsList
               aria-label="Main navigation"
-              className="grid w-full md:w-[90%] grid-cols-3 lg:grid-cols-6"
+              className="grid w-full md:w-[90%] grid-cols-3 lg:grid-cols-7"
             >
               <TabsTrigger value="explainer" icon={<BookOpen size={14} aria-hidden="true" />}>
                 Explainer
@@ -171,6 +189,9 @@ function WorkspaceApp() {
               </TabsTrigger>
               <TabsTrigger value="archive" icon={<Archive size={14} aria-hidden="true" />}>
                 Archive
+              </TabsTrigger>
+              <TabsTrigger value="studio" icon={<FlaskConical size={14} aria-hidden="true" />}>
+                Studio
               </TabsTrigger>
               <TabsTrigger value="analytics" icon={<BarChart3 size={14} aria-hidden="true" />}>
                 Analytics
@@ -192,6 +213,9 @@ function WorkspaceApp() {
           </TabsContent>
           <TabsContent value="archive">
             <DnaArchiveLabTab />
+          </TabsContent>
+          <TabsContent value="studio">
+            <DesignStudioTab />
           </TabsContent>
 
           <TabsContent value="analytics">
@@ -230,33 +254,48 @@ function WorkspaceApp() {
             </div>
           </TabsContent>
         </Tabs>
+        </Suspense>
       </main>
 
       {toast && <ToastNotification message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <Footer />
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        currentTheme={currentTheme}
-        onThemeChange={applyTheme}
-        onConfigChange={() => {
-          const isOffline = configService.isForcedOffline();
-          setToast({
-            message: isOffline
-              ? 'Offline Demo Mode enabled (Simulation mode active)'
-              : 'Live API Mode enabled (Live models active)',
-            type: isOffline ? 'info' : 'success'
-          });
-        }}
-      />
-      <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+      {/* Both modals render null when closed and have no exit animation, so
+          gating on isOpen keeps their chunks out of the initial load. */}
+      {isSettingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            currentTheme={currentTheme}
+            onThemeChange={applyTheme}
+            onConfigChange={() => {
+              const isOffline = configService.isForcedOffline();
+              setToast({
+                message: isOffline
+                  ? 'Offline Demo Mode enabled (Simulation mode active)'
+                  : 'Live API Mode enabled (Live models active)',
+                type: isOffline ? 'info' : 'success'
+              });
+            }}
+          />
+        </Suspense>
+      )}
+      {isShortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
 
 function App() {
   if (window.location.pathname === '/') {
-    return <LandingPage />;
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
+        <LandingPage />
+      </Suspense>
+    );
   }
 
   return <WorkspaceApp />;

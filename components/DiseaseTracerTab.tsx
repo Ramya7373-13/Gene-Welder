@@ -51,7 +51,10 @@ const DiseaseTracerTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:5000/api/risk-assessment/${patientId}`);
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      const response = await fetch(`${backendUrl}/api/risk-assessment/${encodeURIComponent(patientId)}`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`);
       setRiskData(await response.json());
     } catch (err: any) {

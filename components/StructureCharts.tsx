@@ -103,7 +103,7 @@ const StructureCharts: React.FC<StructureChartsProps> = ({ data, loading }) => {
     e.currentTarget.style.cursor = 'grab';
   }, []);
 
-  const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+  const handlePointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     stopOrbitDrag(e);
   }, [stopOrbitDrag]);
 

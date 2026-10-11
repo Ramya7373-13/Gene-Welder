@@ -1,358 +1,300 @@
 # MutationMechanic - Project Structure
 
 ## Overview
-MutationMechanic is an AI-driven protein engineering dashboard for analyzing pathogenicity, structural impact, and splicing defects of genetic variants. The application includes both frontend (React/Vite) and backend (Express/Prisma/PostgreSQL) with persistent storage and clinical variant management features. It runs a **dual-engine AI stack**: Gemini (primary) plus Grok/xAI (additive consensus-validation layer).
+MutationMechanic is a genomics analysis workbench that combines a Vite/React frontend with an Express/Prisma backend. The project supports variant explainer workflows, disease tracing, splicing assessment, DNA Archive Lab experiments, and analytics dashboards, while also integrating Gemini and Grok-backed AI validation.
 
-## Complete Project Structure
+This document reflects the current repository state as of 2026-09-22 and is intended to be a living map of the main application folders, domain modules, and operational entry points.
 
-`
+## Repository Layout
+
+```text
 mutationmechanic/
-├── .git/                                       # Git repository
-├── .kiro/                                      # Kiro AI configuration
-│   └── steering/                               # AI steering configurations
-│       ├── banner-design/
-│       ├── brand/
-│       ├── design/
-│       ├── design-system/
-│       ├── slides/
-│       ├── ui-styling/
-│       └── ui-ux-pro-max/
-├── backend/                                    # Express/Prisma backend server
-│   ├── dist/                                   # Compiled backend output
-│   ├── node_modules/                           # Backend dependencies
-│   ├── prisma/                                 # Database schema and migrations
-│   │   ├── schema.prisma                         # Database schema definition
-│   │   ├── seed-patients.ts                      # Patient data seeding script
-│   │   ├── seed-mrn-variants.ts                  # MRN patient variants seeding script
-│   │   ├── seed-clinical.ts                      # Clinical data seeding script
-│   │   ├── seed.ts                               # General seeding script
-│   │   ├── seed-test.js                          # Test seeding script
-│   │   └── migrations/                           # Database migrations
-│   │       └── 20260901000000_dna_archive_lab_phase1/  # DNA Archive Lab Phase 1 (dna_storage_* tables)
-│   ├── src/                                    # Backend source code
-│   │   ├── routes/                               # API route modules
-│   │   │   └── dnaStorage.ts                       # DNA Archive Lab router (/api/dna-storage)
-│   │   ├── domain/                              # Domain logic modules
-│   │   │   └── dnaStorage/                       # DNA Archive Lab domain layer (types, prng, codecs, errorSimulator, analytics, decoder, reportGenerator, jobRunner)
-│   │   ├── scripts/                             # Dev/debug scripts
-│   │   │   └── debug-codec-roundtrip.mjs           # Codec round-trip debug tool
-│   │   ├── server.ts                             # Main server file with all endpoints
-│   │   ├── prisma.ts                             # Prisma client configuration
-│   │   ├── index.ts                              # Server entry point
-│   │   └── utils/                                # Backend utilities
-│   │       ├── alphafoldUtil.ts                  # AlphaFold API utilities
-│   │       ├── alphamissenseUtil.ts              # AlphaMissense pathogenicity scores
-│   │       ├── spliceaiUtil.ts                   # SpliceAI splicing-effect predictions
-│   │       ├── logger.ts                         # Logging utilities
-│   │       └── redactor.ts                       # Data redaction utilities
-│   ├── storage/                                # Local storage for uploaded files
-│   ├── tests/                                  # Backend tests
-│   │   ├── unit/                                 # Unit tests
-│   │   │   ├── dnaStorage/                       # DNA Archive Lab unit tests (types, prng, analytics, codecs, codecRegistry, errorSimulator, decoder, jobRunner)
-│   │   │   ├── health.test.ts                    # Health check tests
-│   │   │   └── logger.test.ts                    # Logger tests
-│   │   └── integration/                          # Integration tests
-│   │       ├── api.test.ts                       # API integration tests
-│   │       └── dnaStorage.test.ts                # DNA Archive Lab API integration tests
-│   ├── .env                                    # Backend environment variables (incl. XAI_API_KEY)
-│   ├── .env.example                            # Backend environment example
-│   ├── .gitignore                              # Git ignore patterns
-│   ├── jest.config.js                          # Jest configuration
-│   ├── nodemon.json                            # Nodemon configuration
-│   ├── package.json                            # Backend dependencies (incl. openai SDK)
-│   ├── package-lock.json                       # Backend lock file
-│   ├── prisma.config.ts                        # Prisma configuration
-│   ├── README.md                               # Backend README
-│   ├── tsconfig.json                           # Backend TypeScript config
-│   ├── update_meta.cjs                         # Metadata update script
-│   └── update_meta.ts                          # Metadata update script
-├── components/                                 # React UI components
-│   ├── Analytics/                              # Analytics dashboard components
-│   │   ├── AnalyticsDashboard.tsx                # Main analytics dashboard
-│   │   └── HistoryTable.tsx                      # Clinical patient management table
-│   ├── Longevity/                              # Longevity analysis components
-│   │   ├── ActionableInterventionEngine.tsx      # Intervention recommendations
-│   │   ├── AncestralPathogenicityTimeline.tsx    # Ancestral risk timeline
-│   │   └── PersonalGenomeRiskDashboard.tsx       # Personal genome risk view
-│   ├── SplicingDecoder/                        # Splicing analysis components
-│   │   ├── ClinicalInterpretationPanel.tsx        # Clinical interpretation of splice results
-│   │   ├── SplicingDecoderTab.tsx                # Splicing decoder main tab
-│   │   └── SplicingVisualizer.tsx                # Splicing effect visualization
-│   ├── __tests__/                              # Component tests
-│   │   └── ProteinStructureViewer.test.tsx       # Protein structure viewer tests
-│   ├── AnalysisPanel.tsx                       # Variant analysis panel
-│   ├── ChatWidget.tsx                          # AI chat interface
-│   ├── ClinicalSummaryCard.tsx                 # Plain-English clinical summary card (Tier 2)
-│   ├── CompensatoryDesignTab.tsx               # Compensatory mutation design
-│   ├── ConfidenceHeatmap.tsx                   # pLDDT confidence visualization
-│   ├── ConfirmModal.tsx                        # Confirmation dialog
-│   ├── DiseaseTracerTab.tsx                   # Disease risk assessment
-│   ├── DnaHelixBackdrop.tsx                   # Animated DNA helix backdrop
-│   ├── EmptyState.tsx                         # Empty state placeholder
-│   ├── ErrorBoundary.tsx                      # Error handling boundary
-│   ├── Footer.tsx                             # Application footer
-│   ├── GenomicAnnotationPanel.tsx             # Genomic annotation viewer
-│   ├── GrokConsensusCard.tsx                  # Grok dual-engine consensus validation card
-│   ├── Header.tsx                             # Application header
-│   ├── LandingPage.tsx                        # Application landing page
-│   ├── MechanismExplainer.tsx                 # Mechanism explanation
-│   ├── OrthologTable.tsx                      # Ortholog comparison table
-│   ├── PrintableVariantReport.tsx             # Print-ready clinical variant report
-│   ├── ProteinStructureViewer.tsx             # 3D protein structure viewer
-│   ├── SettingsModal.tsx                      # Settings/configuration modal
-│   ├── ShortcutsModal.tsx                     # Keyboard shortcuts helper
-│   ├── StructureCharts.tsx                    # Structural analysis charts
-│   ├── Tabs.tsx                               # Tab navigation component
-│   ├── ToastNotification.tsx                 # Toast notification system
-│   ├── VariantExplainerTab.tsx               # Main variant analysis component
-│   └── VariantSelector.tsx                   # Variant selection component
-├── design-system/                              # UI/UX design system (from skill)
-│   ├── MASTER.md                               # Master design system definition
-│   └── pages/                                  # Page-specific design overrides
-│       ├── analytics.md                        # Analytics page design
-│       ├── design.md                           # Design tab page design
-│       ├── explainer.md                        # Explainer tab page design
-│       ├── splicing.md                         # Splicing tab page design
-│       └── tracer.md                           # Tracer tab page design
-├── dist/                                       # Production build output
-│   ├── assets/                                 # Compiled assets
-│   └── index.html                              # Production HTML entry
-├── docs/                                       # Documentation files
-│   ├── diagnostics/                            # Diagnostic documentation
-│   │   ├── backend-health-logging-tests.md     # Backend health logging test docs
-│   │   ├── prisma-env-startup.md               # Prisma environment startup docs
-│   │   └── PTM-ortholog-alpha-medgemma-check.md # PTM/ortholog/Alpha/MedGemma check
-│   ├── superpowers/                            # Superpowers workflow docs
-│   │   ├── plans/                                # Implementation plans
-│   │   └── specs/                                # Feature specifications
-│   ├── DEV-WORKFLOW.md                         # Development workflow guide
-│   ├── Errors.md                               # Error logs and debugging info
-│   ├── DNA_ARCHIVE_LAB.md                       # DNA Archive Lab module documentation (methodology, profiles, dev setup)
-│   ├── Instructions.md                         # Setup and development instructions
-│   ├── Instructions_1.md                       # Clinical patient and variant instructions
-│   ├── ProjectStructure.md                     # This file
-│   ├── README.md                               # Project overview
-│   ├── State_Sync_Report.md                    # Frontend/backend state sync report
-│   ├── Terrors.md                              # Known terrors/troubleshooting notes
-│   └── data-integration-pattern.md             # Data integration patterns
-├── routes/                                     # API route definitions
-│   └── splicing/                               # Splicing-related routes
-│       └── index.ts                            # Splicing route definitions
-├── services/                                   # API service clients and utilities
-│   ├── alphaGenomeClient/                      # AlphaGenome API client
-│   │   └── index.ts                            # AlphaGenome client implementation
-│   ├── archive/                                # Archived/legacy services
-│   ├── alphafoldClient.ts                      # AlphaFold3 API integration
-│   ├── backendService.ts                       # Backend API client
-│   ├── configService.ts                        # App configuration service
-│   ├── fusionAnalysisService.ts                # Fusion analysis orchestration
-│   ├── fusionMagicDemo.ts                      # Fusion analysis demo
-│   ├── geminiService.ts                        # Google AI services
-│   ├── genomicAnnotationService.ts             # Genomic annotation services
-│   ├── grokService.ts                          # Grok (xAI) consensus-validation client
-│   ├── historyService.ts                       # History tracking service
-│   ├── medgemmaClient.ts                       # MedGemma AI client
-│   └── testFusionAnalysis.ts                   # Fusion analysis test
-├── storage/                                    # Local storage for PDB files
-├── types/                                      # TypeScript type definitions
-│   ├── genomics.ts                             # Genomics-related types
-│   ├── medgemma.ts                             # MedGemma-related types
-│   └── splicing/                               # Splicing-related types
-│       └── index.ts                            # Splicing type definitions
-├── utils/                                      # Frontend utility functions
-│   ├── alphafoldClient.ts                      # Frontend AlphaFold client
-│   ├── cacheLayer.ts                           # Caching layer
-│   ├── logger.ts                               # Frontend logging
-│   ├── presetStorage.ts                        # Preset storage utilities
-│   ├── storage.ts                              # Storage utilities
-│   ├── themeUtils.ts                           # Theme/toggle utilities
-│   ├── uniprot.ts                              # UniProt API utilities
-│   └── uniprot.test.ts                         # UniProt API tests
-├── App.tsx                                     # Main React app component
-├── index.html                                  # HTML entry point
-├── index.tsx                                   # TypeScript entry point
-├── package.json                                # Frontend dependencies
-├── package-lock.json                           # Frontend lock file
-├── constants.ts                                # Application constants (UNIPROT_MAP)
-├── metadata.json                               # Project metadata
-├── mutationmechanic.zip                        # Project archive
-├── .env                                        # Frontend environment variables
-├── .env.example                                # Frontend environment example (VITE_BACKEND_URL)
-├── .eslintrc.json                              # ESLint configuration
-├── .gitignore                                  # Git ignore patterns
-├── .stylelintrc.json                           # Stylelint configuration
-├── .stylelintignore                            # Stylelint ignore patterns
-├── testAlphaFoldIntegration.ts                 # AlphaFold integration test script
-├── testFusionAnalysis.ts                       # Fusion analysis test script
-├── fusionMagicDemo.ts                          # Fusion magic moments demo
-├── addVariant.js                               # Variant addition utility
-├── checkVariants.js                            # Variant checking utility
-├── getModels.js                                # Model retrieval utility
-├── logPrediction.js                            # Prediction logging utility
-├── updateVariant.js                            # Variant update utility
-├── tsconfig.json                               # Frontend TypeScript configuration
-├── vite.config.ts                              # Vite configuration
-└── README.md                                   # Project overview (duplicate in root)
-`
+├── .agents/                                # Project agent metadata and generated scratch config
+├── .claude/                                # Local Claude configuration
+├── .config/                                # Local tool configuration / repo config files
+├── .github/                                # GitHub workflows and automation
+├── .grok/                                  # Grok-related runtime/config artifacts
+├── .kilo/                                  # Kilo project metadata
+├── .kiro/                                  # Kiro steering and workflow files
+├── .mcp.json                               # MCP configuration
+├── .opencode/                              # OpenCode project config
+├── .playwright-mcp/                        # Browser automation config/fixtures
+├── .superpowers-dna-archive-lab-backup/    # Backup copy of the DNA Archive Lab work
+├── .workbuddy-ai/                          # Workbuddy AI artifacts
+├── .env.example                            # Root environment template
+├── .eslintrc.json                          # ESLint config
+├── .gitignore                              # Root ignore rules
+├── .stylelintrc.json                       # Stylelint config
+├── .stylelintignore                        # Stylelint ignore patterns
+├── AGENTS.md                               # Repo-level agent instructions
+├── App.tsx                                 # Main React application shell
+├── CLAUDE.md                               # Repo instructions for Claude
+├── README.md                               # High-level project entry documentation
+├── constants.ts                            # Core app constants and mappings
+├── dist/                                   # Production Vite build output
+├── dist-split/                             # Split build/chunk output
+├── design-system/                           # Design-system definitions and page specs
+│   ├── MASTER.md
+│   └── pages/
+│       ├── analytics.md
+│       ├── design.md
+│       ├── explainer.md
+│       ├── splicing.md
+│       └── tracer.md
+├── docs/                                   # Operational docs and project notes
+│   ├── ContentAgent.md
+│   ├── DEV-WORKFLOW.md
+│   ├── DNA_ARCHIVE_LAB.md
+│   ├── Instructions.md
+│   ├── Instructions_1.md
+│   ├── Instructions_2.md
+│   ├── ProjectStructure.md
+│   ├── README.md
+│   ├── Terrors.md
+│   ├── clinical-workflow-evidence/
+│   ├── data-integration-pattern.md
+│   ├── diagnostics/
+│   ├── dna-archive-lab-commit-and-fork-instructions.md
+│   ├── dna-archive-lab-evidence/
+│   ├── humanity-longevity.txt
+│   ├── project-analysis-shared_comet.md
+│   └── superpowers/
+├── graphify-out/                           # Graphify knowledge graph output
+│   ├── GRAPH_REPORT.md
+│   ├── cache/
+│   ├── graph.html
+│   ├── graph.json
+│   ├── manifest.json
+│   └── 2026-09-06/
+├── images/                                 # Static image assets
+├── metadata.json                           # Project metadata
+├── mutationmechanic.zip                    # Packaged project archive
+├── node_modules/                           # Frontend dependencies
+├── package-lock.json                       # Frontend lockfile
+├── package.json                            # Vite/React app configuration
+├── prisma/                                 # Root Prisma schema directory (legacy/adjacent tooling)
+│   ├── schema.prisma
+│   ├── seed-clinical.ts
+│   ├── seed-mrn-variants.ts
+│   ├── seed-patients.ts
+│   └── seed.ts
+├── routes/                                 # Root-level route definitions
+│   └── splicing/
+│       └── index.ts
+├── services/                               # Frontend service clients
+│   ├── alphaGenomeClient/
+│   │   └── index.ts
+│   ├── archive/
+│   ├── alphafoldClient.ts
+│   ├── backendService.ts
+│   ├── configService.ts
+│   ├── dnaArchiveLabService.ts
+│   ├── dnaArchiveLabService.test.ts
+│   ├── fusionAnalysisService.ts
+│   ├── fusionMagicDemo.ts
+│   ├── geminiService.ts
+│   ├── genomicAnnotationService.ts
+│   ├── grokService.ts
+│   ├── historyService.ts
+│   ├── medgemmaClient.ts
+│   └── testFusionAnalysis.ts
+├── src/                                    # Frontend app context / shared source area
+│   ├── components/
+│   └── contexts/
+├── storage/                                # Local storage for PDB / uploaded artifacts
+├── testAlphaFoldIntegration.ts             # AlphaFold integration test script
+├── testFusionAnalysis.ts                   # Fusion analysis script
+├── types/                                  # Shared TS types
+│   ├── genomics.ts
+│   ├── medgemma.ts
+│   └── splicing/
+│       └── index.ts
+├── ui-ux-pro-max-skill/                    # Design system / skill bundle
+├── utils/                                  # Frontend utility helpers
+│   ├── alphafoldClient.ts
+│   ├── cacheLayer.ts
+│   ├── logger.ts
+│   ├── presetStorage.ts
+│   ├── storage.ts
+│   ├── themeUtils.ts
+│   ├── uniprot.ts
+│   └── uniprot.test.ts
+├── vite-env.d.ts                           # Vite env declarations
+├── vite.config.ts                          # Vite config
+├── vitest.setup.ts                         # Vitest setup hook
+└── index.tsx                               # Frontend entrypoint
 
-## Backend API Endpoints
+backend/
+├── .env                                    # Backend environment configuration
+├── .env.example                            # Backend env template
+├── .gitignore                              # Backend ignore rules
+├── README.md                               # Backend README
+├── dist/                                   # Compiled backend output
+├── jest.config.js                          # Jest config
+├── node_modules/                           # Backend dependencies
+├── nodemon.json                            # Dev watcher config
+├── package-lock.json                       # Backend lockfile
+├── package.json                            # Backend dependencies and scripts
+├── prisma/                                 # Prisma schema + seed scripts
+│   ├── migrations/
+│   ├── schema.prisma
+│   ├── seed-clinical.ts
+│   ├── seed-mrn-variants.ts
+│   ├── seed-patients.ts
+│   └── seed.ts
+├── prisma.config.ts                        # Prisma config
+├── scripts/                                # Small operational helper scripts
+├── seed_test.js                            # Seed test script
+├── src/                                    # Backend source entry
+│   ├── domain/                             # Domain logic
+│   │   └── dnaStorage/
+│   │       ├── analytics/
+│   │       ├── codecs/
+│   │       ├── decoder/
+│   │       ├── errorSimulator/
+│   │       ├── jobRunner/
+│   │       ├── prng/
+│   │       ├── reportGenerator/
+│   │       └── types/
+│   ├── index.ts                            # Server bootstrapping entry
+│   ├── lib/                                # Shared backend library helpers
+│   │   ├── clients.ts
+│   │   ├── config.ts
+│   │   ├── metering.ts
+│   │   ├── rateLimit.ts
+│   │   ├── request.ts
+│   │   ├── session.ts
+│   │   └── uploads.ts
+│   ├── prisma.ts                           # Prisma client setup
+│   ├── routes/                             # API routers
+│   │   ├── ai.ts
+│   │   ├── audit.ts
+│   │   ├── auth.ts
+│   │   ├── billing.ts
+│   │   ├── clinical.ts
+│   │   ├── collab.ts
+│   │   ├── dnaStorage.ts
+│   │   ├── genomics.ts
+│   │   ├── predictions.ts
+│   │   ├── records.ts
+│   │   ├── structures.ts
+│   │   └── variants.ts
+│   ├── server.ts                           # Main Express server configuration
+│   └── utils/                              # Common backend utilities
+│       ├── logger.ts
+│       ├── redactor.ts
+│       └── ...
+├── storage/                                # Uploaded file storage for backend features
+├── tests/                                  # Backend tests
+│   ├── integration/
+│   └── unit/
+├── tsconfig.json                           # Backend TypeScript config
+├── update_meta.cjs                         # Metadata update helper
+├── update_meta.ts                          # TypeScript metadata helper
+└── test.pdb                                # Sample PDB file used in test flows
+```
 
-### Core Endpoints
-- GET / - Root info
-- GET /api/health - Health check (reports Gemini + Grok service status)
-- GET /api/patients - Get all patients with names
-- GET /api/variants - Get patient variants (supports ?patientId=)
-- POST /api/variants - Create/update variant
-- POST /api/variants/mock-ingest - Mock variant ingestion
-- POST /api/variants/upload-pdb - Upload variant PDB file (Tier 1)
-- POST /api/patients - Create patient
-- GET /api/alphafold/:gene - Fetch protein structure from AlphaFold DB
-- POST /api/structures - Upload protein structure file
-- GET /api/structures/file - Fetch stored structure file
-- GET /api/test-storage - Verify storage readiness
-- GET /api/test-schema - Test clinical schema
-- POST /api/predictions - Log ML predictions
-- GET /api/models - List active ML models
-- POST /api/seed-clinical - Bulk seed clinical data
-- POST /api/seed-models - Seed model registry
-- GET /api/audits, GET /api/audits/stats - Audit trail
-- POST /api/users, GET /api/users/:id - Users
-- POST/GET /api/analyses - Analyses
-- POST /api/history, GET /api/history/:userId - Analysis history
-- POST /api/share - Share analysis
-- POST/GET /api/comments - Analysis comments
-- GET/POST /api/risk-assessments, /api/interventions, /api/polygenic-scores, /api/family-risks - Longevity/risk features
-- GET /api/risk-assessment/:patientId - Patient risk assessment
-- POST /api/splicing - Splicing analysis
+## Frontend structure and responsibilities
 
-### AI Endpoints (Dual-Engine: Gemini + Grok)
-- POST /api/ai/variant-analysis - Gemini variant analysis (explainer/design modes; 7-day cache `mode:GENE:VARIANT`)
-- POST /api/ai/chat - Gemini chat with variant context
-- POST /api/ai/clinical-analysis - Gemini clinical analysis JSON
-- POST /api/ai/clinical-summary - Gemini plain-English clinical summary (7-day cache `summary:GENE:VARIANT`)
-- POST /api/ai/grok-validation - **Grok (xAI grok-4.6) consensus validation** of mutation structural impact (7-day cache `grok:GENE:VARIANT`; offline mock fallback on upstream failure)
+The UI is organized around a tab-based application shell in [App.tsx](../App.tsx). The current active interface includes six primary workstreams:
 
-### Evidence-Lookup Endpoints
-- POST /api/alphamissense, GET /api/alphamissense/:gene/:variant - AlphaMissense pathogenicity scores
-- POST /api/spliceai - SpliceAI splicing-effect predictions
+- Explainer: variant interpretation workflow
+- Design: compensatory or engineered mutation design
+- Tracer: disease-risk and pathway tracing
+- Splicing: splice-site effect analysis
+- Archive: DNA Archive Lab workflow
+- Analytics: history, analysis dashboards, export, and review
 
-## Dual-Engine AI Architecture
+Major frontend modules:
 
-### Gemini (Primary Engine)
-- SDK: `@google/genai`, model `GEMINI_MODEL` (default `gemini-3-flash-preview`)
-- Powers variant analysis, chat, clinical analysis, and clinical summary
+- `components/VariantExplainerTab.tsx` — primary gene/variant analysis surface
+- `components/CompensatoryDesignTab.tsx` — design-oriented mutation engineering
+- `components/DiseaseTracerTab.tsx` — phenotype and disease tracing
+- `components/SplicingDecoder/` — splice-aware interpretation and visualizations
+- `components/DnaArchiveLab/` — archive lab simulation and experiment flows
+- `components/Analytics/` — analytics dashboard and history table
+- `components/GrokConsensusCard.tsx` — Grok consensus validation display
+- `components/ClinicalSummaryCard.tsx` — human-readable patient/variant summary
+- `components/PrintableVariantReport.tsx` — clinical-style printable output
+- `components/Header.tsx`, `Footer.tsx`, `Tabs.tsx` — shell navigation and layout
 
-### Grok (Consensus-Validation Engine)
-- SDK: `openai` (standard OpenAI SDK architecture), `baseURL: https://api.x.ai/v1`, key `XAI_API_KEY`
-- Model: `GROK_MODEL` (default `grok-4.6`)
-- Endpoint: `POST /api/ai/grok-validation` returns `{ validationSummary, structuralImpact, domainContext, consensusAssessment, confidence }`
-- Resilience: 30s timeout, 1 retry, try-catch ladder degrading to an offline mock payload (`source: 'FALLBACK'`) — never a fatal 500
-- Frontend: `components/GrokConsensusCard.tsx` + `services/grokService.ts`
+## Backend structure and responsibilities
 
-### DNA Archive Lab Endpoints (simulation only — see docs/DNA_ARCHIVE_LAB.md)
-- POST /api/dna-storage/experiments - Create experiment
-- POST /api/dna-storage/experiments/:id/upload - Upload source file (<=1MB, text/JSON/CSV)
-- POST /api/dna-storage/experiments/:id/encode - Encode file to DNA strands
-- POST /api/dna-storage/experiments/:id/simulate - Run deterministic channel-error simulation
-- POST /api/dna-storage/experiments/:id/decode - Decode and verify against source SHA-256
-- GET /api/dna-storage/experiments - List experiments
-- GET /api/dna-storage/experiments/:id - Get experiment detail
-- GET /api/dna-storage/experiments/:id/strands - Get generated strands
-- GET /api/dna-storage/experiments/:id/report - Get Markdown + JSON report
-- DELETE /api/dna-storage/experiments/:id - Delete experiment (cascades)
+The backend is bootstrapped in [backend/src/server.ts](../backend/src/server.ts), with route mounting split across dedicated feature modules in [backend/src/routes](../backend/src/routes).
 
-## Clinical Variant Schema
+Current route groups:
 
-### Patient Model
-- id: Internal Prisma ID (cuid)
-- patientId: External patient ID (e.g., P001, MRN-123)
-- name: Patient name (e.g., "John Smith - SMA Diagnosis")
-- createdAt: Creation timestamp
+- `/api/auth` — authentication and session flows
+- `/api/billing` — billing and metering related APIs
+- `/api/clinical` — patient and clinical variant handling
+- `/api/dna-storage` — DNA Archive Lab simulator endpoints
+- `/api/genomics` — genomic lookup and evidence flows
+- `/api/records` — record and history management
+- `/api/predictions` — ML prediction logging and related outcomes
+- `/api/structures` — PDB upload and storage
+- `/api/variants` — variant ingestion and update APIs
+- `/api/audit` — audit record endpoints
+- `/api/ai` — AI analysis endpoints
 
-### Variant Model
-- id: Internal Prisma ID (cuid)
-- patientId: Links to Patient.id (foreign key)
-- gene: Gene name (e.g., SMN1, CFTR, BCR-ABL1)
-- hgvs_c: cDNA variant (e.g., c.840+2T>G)
-- hgvs_p: Protein variant (e.g., p.Gly281*)
-- ref_allele/alt_allele: Reference and alternative alleles
-- zygosity: Homozygous/heterozygous
-- gnomad_freq: gnomAD frequency
-- clinvar_path: Pathogenicity from ClinVar
-- acmg_class: ACMG classification (PVS1, PS1, PM1, etc.)
+The backend domain layer also includes a specialized DNA storage subsystem under `backend/src/domain/dnaStorage/` for encoding, decoding, simulation, analytics, and report generation.
 
-## Clinical Features Implemented
+## AI stack and services
 
-### Patient Management
-- 10 Clinical Patients: P001-P010 with real names and conditions
-- MRN Patients: All existing MRN patients have 3+ clinical variants
-- Patient Names: All patients show proper names in dropdown, not "No variants"
-- Variant Distribution: Each patient has 3-4 specific clinical variants
+### Core AI
+- Gemini is the primary intelligence layer for clinical/variant reasoning.
+- Grok is used as a secondary consensus-validation layer for structural impact checks.
 
-### Clinical Examples
-- P001 John Smith: SMA diagnosis (SMN1, SMN2, NAIP variants)
-- P003 Michael Brown: CML with BCR-ABL1 fusion (BCR-ABL1, ABL1, BCR variants)
-- P007 Robert Martinez: CFTR Triple Mutation (4 CFTR variants)
-- MRN-226856: Oncology panel (EGFR, KRAS, TP53 variants)
-- MRN-703891: Neuromuscular/DMD (3 DMD variants)
-- MRN-461835: Now has 3 metabolic variants (PAH, G6PD)
+### Common service areas
+- `services/geminiService.ts` — Gemini-backed analysis access
+- `services/grokService.ts` — external Grok validation client
+- `services/alphafoldClient.ts` — AlphaFold data access patterns
+- `services/genomicAnnotationService.ts` — annotation and sequence evidence helpers
+- `services/fusionAnalysisService.ts` — fusion-aware analysis orchestration
+- `services/medgemmaClient.ts` — model bridge for multimodal/clinical reasoning
 
-### Three-Tier Clinical Lifecycle
-- Tier 1: Variant PDB ingestion (`/api/variants/upload-pdb`, 30 MB cap)
-- Tier 2: Plain-English clinical decision support (`ClinicalSummaryCard` + `/api/ai/clinical-summary`)
-- Tier 3: Printable clinical variant report (`PrintableVariantReport.tsx`)
+## Data model and clinical domain
 
-### AlphaFold3 Integration
-- Public API: Integration with AlphaFold EBI DB (2M+ structures)
-- Fusion Support: BCR-ABL1, EML4-ALK, BRCA1-BRCA2, CFTR structure prediction
-- Auto-trigger: Fusion genes automatically trigger real AlphaFold structure loading
-- Storage: Real PDB structures uploaded to local backend storage
-- Endpoints: /api/alphafold/:gene returns structureId when successful
+The project includes a clinical variant model backed by Prisma and seeded patient records:
 
-## File Changes Summary
+- `Patient` records carry patient IDs and display names.
+- `Variant` records attach to a patient and include gene, HGVS notation, zygosity, ACMG classification, and clinical metadata.
+- Clinical example sets include SMA, CFTR, cancer-genomic, and neuromuscular variants.
+- Database seeding scripts live in `backend/prisma/` and support both general and MRN-specific variant sets.
 
-### Backend Updates
-- backend/src/server.ts: All endpoints incl. dual-engine AI routes (Gemini + Grok), audits, longevity/risk routes
-- backend/src/utils/alphafoldUtil.ts: AlphaFold DB API integration
-- backend/src/utils/alphamissenseUtil.ts: AlphaMissense score lookups (DeepMind precomputed + MyVariant.info)
-- backend/src/utils/spliceaiUtil.ts: SpliceAI predictions (Illumina precomputed + MyVariant.info)
-- backend/prisma/schema.prisma: Clinical variant schema with Patient/Variant relationships
-- backend/prisma/seed-patients.ts: Seeding script for P001-P010 patients with 3+ variants each
-- backend/prisma/seed-mrn-variants.ts: Seeding script for MRN patients with clinical variants
-- backend/prisma/seed-clinical.ts: Seeding script for clinical variant data
-- backend/package.json: Added `openai` dependency for the Grok consensus layer
+## Docs and project guidance
 
-### Frontend Updates
-- components/Analytics/HistoryTable.tsx: Updated dropdown to show p.name || p.patientId
-- services/alphafoldClient.ts: Public AlphaFold DB API integration
-- services/grokService.ts: Frontend client for `/api/ai/grok-validation`
-- constants.ts: Added UNIPROT_MAP with clinical gene mappings
-- components/VariantExplainerTab.tsx: Auto-trigger for fusion genes
-- New components: LandingPage, ConfirmModal, EmptyState, ChatWidget, ClinicalSummaryCard, PrintableVariantReport, GrokConsensusCard, Longevity suite, SplicingDecoder suite, Footer, DnaHelixBackdrop
-- Enhanced components: DiseaseTracerTab, CompensatoryDesignTab, GenomicAnnotationPanel
-- Design system implementation: Complete UI/UX overhaul with Neumorphism styling
-- Utility additions: cacheLayer, presetStorage, storage, themeUtils, improved logging
+The repo includes operational and methodology docs in [docs](../docs), including:
 
-### Clinical Variant Features
-- All Patients Have Variants: No patient shows "No variants" anymore
-- Real Names: Clinical patients like "John Smith - SMA Diagnosis" displayed
-- 3+ Variants Per Patient: Each patient has 3-4 clinically relevant variants
-- No Duplicates: Seed scripts include cleanup logic to prevent duplicate variants
-- ACMG Classifications: Proper clinical classifications assigned (PVS1, PS1, PM1, etc.)
+- [docs/DNA_ARCHIVE_LAB.md](../docs/DNA_ARCHIVE_LAB.md)
+- [docs/DEV-WORKFLOW.md](../docs/DEV-WORKFLOW.md)
+- [docs/Instructions.md](../docs/Instructions.md)
+- [docs/Terrors.md](../docs/Terrors.md)
+- [docs/data-integration-pattern.md](../docs/data-integration-pattern.md)
 
-## Testing & Validation
-- curl http://localhost:5000/api/health - Reports db, gemini, and grok service status
-- curl http://localhost:5000/api/patients - Returns all patients with names
-- curl http://localhost:5000/api/variants?patientId=P001 - Shows 3+ variants for P001
-- curl -X POST http://localhost:5000/api/ai/grok-validation -H "Content-Type: application/json" -d '{"gene":"BRCA1","variant":"p.Arg1758His"}' - Grok consensus validation
-- curl http://localhost:5000/api/alphafold/BCR-ABL1 - Returns structureId for fusion
+These files capture system workflow, troubleshooting notes, design intent, and project background beyond the code itself.
 
-## Production Status
-- Clinical Scale: All 20+ patients have 3+ clinical variants each
-- AlphaFold3 Ready: Production API integration with public AlphaFold DB
-- Fusion Analysis: BCR-ABL1 and other fusion proteins supported
-- Patient Names: Clinical names properly displayed in frontend
-- No Duplicates: Database cleanup ensures unique variants per patient
-- Design System: Professional Neumorphism-based UI implemented
-- Build System: Production-ready Vite build with asset optimization
-- Dual-Engine AI: Gemini primary + Grok consensus validation live, with 7-day caching and offline fallbacks
+## Tooling and scripts
+
+Frontend:
+- `npm run dev` — Vite dev server
+- `npm run build` — production build
+- `npm run test` — Vitest suite
+
+Backend:
+- `npm run dev` — nodemon + tsx backend dev startup
+- `npm run build` — TypeScript build
+- `npm run start` — production backend start
+- `npm run test` — Jest suite
+- `npm run db:push`, `npm run db:generate`, `npm run db:migrate` — Prisma maintenance tasks
+
+## Current status summary
+
+- React + Vite frontend with tabbed multi-panel genomic workflow
+- Express + Prisma backend with modular route structure
+- Clinical variant and patient data model seeded in Prisma
+- Gemini primary analysis engine plus Grok validation layer
+- DNA Archive Lab prototype and simulation tooling in active codebase
+- Analytics and patient-report workflows integrated in the main app shell
+- Knowledge graph output generated under `graphify-out/`
+
+This repo is a hybrid clinical-genomics application and research dashboard, with the codebase organized around variant interpretation, AI validation, patient data modeling, and archive/analytics tooling rather than a single monolithic app shell.

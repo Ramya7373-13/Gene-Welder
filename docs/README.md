@@ -1,59 +1,100 @@
 # MutationMechanic
 
-AI-driven protein engineering dashboard for analyzing pathogenicity, structural impact, and splicing defects.
+AI-assisted genomics analysis workbench: pathogenicity interpretation, structural impact, and splicing defect analysis.
+
+> **Research Use Only.** Outputs are not for clinical, diagnostic, or laboratory decision-making.
 
 ## Features
 
-*   **Variant Explainer:** Visualizes AlphaFold 3 structures with per-residue confidence (pLDDT) heatmaps. Compare Wild-Type vs Mutant structures side-by-side.
-*   **Compensatory Design:** AI-suggested stabilizing mutations to rescue protein function.
-*   **Splicing Decoder:** Deep learning integration (AlphaGenome/DeepSplicer) to predict exon skipping and cryptic splice site activation. Includes MedGemma clinical interpretation.
-*   **DNA Archive Lab:** In-silico DNA data-storage simulator — encode small files into synthetic DNA strands, apply deterministic channel-error models (substitution, insertion, deletion, dropout, duplication, coverage), decode and verify against the original checksum, and export reproducible reports. See `docs/DNA_ARCHIVE_LAB.md`. *Simulation only — not for clinical, biological, or laboratory decision-making.*
-*   **Interactive 3D Viewer:** WebGL-based structure viewer using `3Dmol.js` with molecular surface and confidence coloring.
+- **Variant Explainer** — AlphaFold/ESMFold structures with per-residue confidence (pLDDT) heatmaps; wild-type vs mutant side-by-side.
+- **Compensatory Design** — AI-suggested stabilizing mutations to rescue protein function.
+- **Splicing Decoder** — exon skipping and cryptic splice-site prediction (AlphaGenome / SpliceAI), with MedGemma clinical interpretation.
+- **DNA Archive Lab** — in-silico DNA data-storage simulator: encode files into synthetic strands, apply deterministic channel-error models (substitution, insertion, deletion, dropout, duplication, coverage), decode and verify against the original checksum, export reproducible reports. See [`DNA_ARCHIVE_LAB.md`](DNA_ARCHIVE_LAB.md). *Simulation only.*
+- **Disease Tracer / Longevity** — risk assessment, polygenic scores, and intervention tracking.
+- **Interactive 3D viewer** — WebGL via `3Dmol.js`, with molecular surface and confidence coloring.
+- **Dual-engine AI consensus** — Gemini + Grok cross-validation with provenance on every result.
 
-## Tech Stack
+## Repository layout
 
-*   **Frontend:** React 18, TypeScript, Tailwind CSS, Recharts, Lucide React
-*   **3D Visualization:** 3Dmol.js
-*   **AI Integration:** Google GenAI SDK (Gemini 2.5), ESMFold (Proxy for structure generation)
-*   **Build:** Vite (Assumed) or Create React App
+| Path | Contents |
+|---|---|
+| `/` | Vite + React 18 + TypeScript frontend |
+| `backend/` | Express 5 + Prisma/PostgreSQL API |
+| `backend/prisma/schema.prisma` | Authoritative Prisma schema |
+
+Note: the empty `prisma/schema.prisma` at the repo root is not used — the real schema lives under `backend/`.
+
+## Tech stack
+
+- **Frontend:** React 18, TypeScript, Vite 6, Recharts, Lucide, Vitest + Testing Library
+- **Backend:** Node, Express 5, Prisma 7, PostgreSQL (Neon in production)
+- **AI:** Google GenAI (Gemini), xAI (Grok) consensus, MedGemma, ESMFold
+- **Auth:** magic link (Resend) + HttpOnly session cookie; Stripe subscriptions
 
 ## Prerequisites
 
-*   Node.js 18+
-*   NPM or Yarn
+- Node.js 18+
+- A PostgreSQL database (local, or Neon for production)
 
-## Setup & Run
+## Setup
 
-1.  **Install Dependencies**
-    ```bash
-    npm install
-    ```
+### 1. Backend
 
-2.  **Environment Configuration**
-    Create a `.env` file in the root:
-    ```env
-    # Optional: For Live AI Analysis
-    REACT_APP_GEMINI_API_KEY=your_key_here
-    ```
-    *Note: The app runs in "Simulation Mode" with mock data if no keys are provided.*
+```bash
+cd backend
+npm install
+cp .env.example .env      # then fill in real values
+npx prisma generate
+npm run db:migrate        # local dev; use `npx prisma migrate deploy` in production
+npm run dev               # http://localhost:5000
+```
 
-3.  **Start Development Server**
-    ```bash
-    npm start
-    # or
-    npm run dev
-    ```
+### 2. Frontend
 
-4.  **Run Tests**
-    ```bash
-    npm test
-    ```
+```bash
+npm install
+cp .env.example .env
+npm run dev               # http://localhost:3001
+```
 
-## Key Components
+`VITE_BACKEND_URL` must point at the backend (default `http://localhost:5000`).
 
-*   `VariantExplainerTab`: Main dashboard for structural analysis.
-*   `ProteinStructureViewer`: Wrapper around 3Dmol.js for rendering PDB data.
-*   `SplicingDecoderTab`: Visualizer for intron/exon junctions and splicing scores.
+## Environment variables and secrets
+
+**All API keys are server-side only.** The backend reads them from `backend/.env`; the browser never sees them.
+
+- Never prefix a secret with `VITE_` — Vite inlines `VITE_*` values into the client bundle, which makes them public.
+- The frontend `.env` carries one variable: `VITE_BACKEND_URL`.
+- `backend/.env.example` lists every server-side key (Gemini, Grok/xAI, AlphaGenome, Resend, Stripe, `SESSION_SECRET`, `DATABASE_URL`).
+- `SESSION_SECRET` must be a real random value in production; the server fails closed if it is missing.
+
+## Scripts
+
+| Location | Command | Purpose |
+|---|---|---|
+| root | `npm run dev` | Vite dev server on port 3001 |
+| root | `npm run build` | Production build to `dist/` |
+| root | `npm test` | Vitest suite (frontend) |
+| backend | `npm run dev` | Express via tsx/nodemon on port 5000 |
+| backend | `npm test` | Jest unit + integration suites (needs a reachable database) |
+
+Note: `npm run build` does not typecheck. Run `npx tsc --noEmit` separately — the project currently reports type errors that the build will not surface.
+
+## Safety properties
+
+Preserve these in every refactor:
+
+1. **Fail-closed AI routes** — an unreachable engine returns an error; it never fabricates clinical content.
+2. **Shape-checked responses** — Grok and consensus payloads are schema-validated before reaching the UI.
+3. **Provenance on every AI result** — `source: API | CACHE | SIMULATION`, plus model and version.
+
+## Key components
+
+- `components/VariantExplainerTab.tsx` — structural analysis dashboard
+- `components/SplicingDecoder/SplicingDecoderTab.tsx` — splice junction visualization
+- `components/ProteinStructureViewer.tsx` — 3Dmol.js wrapper
+- `components/DnaArchiveLab/` — DNA storage simulator
+- `components/Longevity/` — risk and intervention UI
 
 ## License
 

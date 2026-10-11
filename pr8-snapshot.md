@@ -1,0 +1,491 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#start-of-content"
+    - banner "Global navigation menu" [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - button "Open menu" [ref=e12] [cursor=pointer]
+          - link "Homepage (g then d)" [ref=e15] [cursor=pointer]:
+            - /url: /
+        - generic [ref=e18]:
+          - navigation "Breadcrumbs" [ref=e19]:
+            - list [ref=e20]:
+              - listitem [ref=e21]:
+                - link "binods1313" [ref=e22] [cursor=pointer]:
+                  - /url: /binods1313
+              - listitem [ref=e24]:
+                - link "MutationMechanic" [ref=e25] [cursor=pointer]:
+                  - /url: /binods1313/MutationMechanic
+                - button "Switch repository (alt shift r)" [ref=e28] [cursor=pointer]
+          - button "Open quick search dialog, type / to search" [ref=e33] [cursor=pointer]:
+            - generic [ref=e35]:
+              - generic:
+                - text: Type
+                - generic: /
+                - text: to search
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e40]:
+              - link "Chat with Copilot" [ref=e42] [cursor=pointer]:
+                - /url: /copilot
+              - button "Open Copilot…" [ref=e47] [cursor=pointer]
+            - button "Create new..." [ref=e49] [cursor=pointer]
+            - generic [ref=e51]:
+              - link "All issues" [ref=e52] [cursor=pointer]:
+                - /url: /issues
+              - link "All pull requests" [ref=e56] [cursor=pointer]:
+                - /url: /pulls
+              - link "All repositories" [ref=e59] [cursor=pointer]:
+                - /url: /repos
+          - link "You have unread notifications (g then n)" [ref=e718] [cursor=pointer]:
+            - /url: /notifications
+          - button "Open user navigation menu" [ref=e66] [cursor=pointer]:
+            - img "Binod Kumar Samad" [ref=e67]
+      - heading "Repository navigation" [level=2] [ref=e68]
+      - navigation "Repository" [ref=e69]:
+        - list [ref=e70]:
+          - listitem [ref=e71]:
+            - link "Code" [ref=e72] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic
+          - listitem [ref=e77]:
+            - link "Issues" [ref=e78] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/issues
+          - listitem [ref=e84]:
+            - link "Pull requests (1)" [ref=e85] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/pulls
+              - generic [ref=e89]: Pull requests
+              - generic [ref=e90]:
+                - generic [aria-hidden] [ref=e91]: "1"
+                - generic [ref=e92]: (1)
+          - listitem [ref=e93]:
+            - link "Agents" [ref=e94] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/agents?author=binods1313
+          - listitem [ref=e100]:
+            - link "Actions" [ref=e101] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/actions
+          - listitem [ref=e106]:
+            - link "Projects" [ref=e107] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/projects
+          - listitem [ref=e112]:
+            - link "Security and quality" [ref=e113] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/security
+          - listitem [ref=e118]:
+            - link "Insights" [ref=e119] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/network/dependencies
+          - listitem [ref=e124]:
+            - link "Settings" [ref=e125] [cursor=pointer]:
+              - /url: /binods1313/MutationMechanic/settings
+  - main [ref=e133]:
+    - generic [ref=e140]:
+      - generic [ref=e144]:
+        - generic [ref=e146]:
+          - 'heading "feat: M1 auth + paywall (magic-link, sessions, usage metering, Stripe) - #8" [level=1] [ref=e147]':
+            - text: "feat: M1 auth + paywall (magic-link, sessions, usage metering, Stripe)"
+            - generic [ref=e148]: "- #8"
+          - generic [ref=e149]:
+            - generic [aria-hidden] [ref=e150]: "#8"
+            - button "Edit title" [ref=e151] [cursor=pointer]
+        - generic [ref=e155]:
+          - button "Ready to merge" [ref=e719] [cursor=pointer]
+          - button "Code" [ref=e161] [cursor=pointer]
+        - generic [ref=e165]:
+          - generic [ref=e167]:
+            - img "Pull request" [ref=e168]
+            - text: Open
+          - generic [ref=e171]:
+            - link "binods1313" [ref=e172] [cursor=pointer]:
+              - /url: /binods1313
+            - text: wants to merge 7 commits into
+            - generic [ref=e173]:
+              - link "main" [ref=e174] [cursor=pointer]:
+                - /url: /binods1313/MutationMechanic/tree/main
+              - generic [ref=e175]: from
+              - generic [ref=e176]:
+                - link "feat/m1-auth-paywall" [ref=e177] [cursor=pointer]:
+                  - /url: /binods1313/MutationMechanic/tree/feat/m1-auth-paywall
+                - button "Copy head branch name to clipboard" [ref=e178] [cursor=pointer]
+        - generic [ref=e182]:
+          - generic [ref=e722]:
+            - generic [aria-hidden] [ref=e723]: +1,460
+            - generic [aria-hidden] [ref=e724]: "-110"
+            - generic [ref=e725]: "Lines changed: 1460 additions & 110 deletions"
+          - navigation "Pull request navigation" [ref=e732]:
+            - generic [ref=e733]:
+              - link "Conversation (1)" [ref=e734] [cursor=pointer]:
+                - /url: /binods1313/MutationMechanic/pull/8
+                - text: Conversation
+                - generic [aria-hidden] [ref=e737]: "1"
+                - generic [ref=e738]: (1)
+              - link "Commits (7)" [ref=e739] [cursor=pointer]:
+                - /url: /binods1313/MutationMechanic/pull/8/commits
+                - text: Commits
+                - generic [aria-hidden] [ref=e742]: "7"
+                - generic [ref=e743]: (7)
+              - link "Checks (1)" [ref=e744] [cursor=pointer]:
+                - /url: /binods1313/MutationMechanic/pull/8/checks
+                - text: Checks
+                - generic [aria-hidden] [ref=e747]: "1"
+                - generic [ref=e748]: (1)
+              - link "Files changed (6)" [ref=e749] [cursor=pointer]:
+                - /url: /binods1313/MutationMechanic/pull/8/changes
+                - text: Files changed
+                - generic [aria-hidden] [ref=e752]: "6"
+                - generic [ref=e753]: (6)
+      - generic [ref=e206]:
+        - generic [ref=e208]:
+          - heading "Conversation" [level=2] [ref=e209]
+          - generic [ref=e210]:
+            - generic [ref=e211]:
+              - generic [ref=e213]:
+                - link [ref=e214] [cursor=pointer]:
+                  - /url: /binods1313
+                  - img "@binods1313" [ref=e215]
+                - generic [ref=e217]:
+                  - generic [ref=e218]:
+                    - heading [level=3] [ref=e219]:
+                      - generic [ref=e220]:
+                        - strong [ref=e221]:
+                          - link "binods1313" [ref=e222] [cursor=pointer]:
+                            - /url: /binods1313
+                        - text: commented
+                        - link "Sep 5, 202610 minutes ago" [ref=e223] [cursor=pointer]:
+                          - /url: "#issue-5361255413"
+                    - group [ref=e226]:
+                      - button [ref=e227] [cursor=pointer]:
+                        - img "Show options" [ref=e230]
+                  - generic [ref=e235]:
+                    - 'heading "M1: Authentication + Paywall" [level=2] [ref=e236]'
+                    - paragraph [ref=e237]: Magic-link auth (hashed tokens), DB-backed expiring sessions, usage metering with atomic reservation, and Stripe subscription webhooks. Reviewed by Claude; all six M1 follow-ups included.
+                    - heading "Follow-ups" [level=3] [ref=e238]
+                    - list [ref=e239]:
+                      - listitem [ref=e240]: Atomic usage reservation (pg advisory lock, fail-closed) - closes TOCTOU race
+                      - listitem [ref=e241]: DB-backed expiring sessions + HMAC-signed cookie (SESSION_SECRET now used, fail-closed in prod)
+                      - listitem [ref=e242]: Rate-limit trust-proxy fix (getClientIp -> req.ip, spoof removed)
+                      - listitem [ref=e243]: Migration rebuild - authoritative from-empty history
+                      - listitem [ref=e244]: Metering coverage audit (chat, clinical-summary wired; dead keys removed)
+                      - listitem [ref=e245]: "Review fixes: async error handling (DB failure -> 500), remaining-counter fix"
+                    - heading "Tests" [level=3] [ref=e246]
+                    - paragraph [ref=e247]: 126 passing (16 suites); typecheck clean.
+                    - heading "Note" [level=3] [ref=e248]
+                    - paragraph [ref=e249]: "Reviewed by Claude; awaiting authorized merge. Open item tracked separately: auth-hardening of legacy M0 read routes."
+                  - group [ref=e253]:
+                    - generic "Add or remove reactions" [ref=e254] [cursor=pointer]
+              - generic [ref=e257]:
+                - generic [ref=e259]:
+                  - generic [ref=e264]:
+                    - link "binods1313" [ref=e265] [cursor=pointer]:
+                      - /url: /binods1313
+                    - text: added 7 commits
+                    - link "September 5, 2026 08:2419 hours ago" [ref=e266] [cursor=pointer]:
+                      - /url: "#commits-pushed-d645feb"
+                  - generic [ref=e267]:
+                    - generic [ref=e275]:
+                      - link [ref=e278] [cursor=pointer]:
+                        - /url: /binods1313
+                        - img "@binods1313" [ref=e279]
+                      - generic [ref=e280]:
+                        - code [ref=e281]:
+                          - 'link "fix: add reserveUsage with advisory lock, fix concurrency test mock" [ref=e282] [cursor=pointer]':
+                            - /url: /binods1313/MutationMechanic/pull/8/commits/d645feba9e661cc5849155abb093513b4021228c
+                        - button "Commit message body" [ref=e284] [cursor=pointer]: …
+                      - group [ref=e754]:
+                        - img "2 / 2 checks OK" [ref=e756] [cursor=pointer]
+                      - code [ref=e292]:
+                        - link "d645feb" [ref=e293] [cursor=pointer]:
+                          - /url: /binods1313/MutationMechanic/pull/8/commits/d645feba9e661cc5849155abb093513b4021228c
+                    - generic [ref=e301]:
+                      - link [ref=e304] [cursor=pointer]:
+                        - /url: /binods1313
+                        - img "@binods1313" [ref=e305]
+                      - generic [ref=e306]:
+                        - code [ref=e307]:
+                          - 'link "feat: replace in-memory sessions with persistent DB-backed sessions" [ref=e308] [cursor=pointer]':
+                            - /url: /binods1313/MutationMechanic/pull/8/commits/6499ab8954e6807cad219fe110e6f30831ac987d
+                        - button "Commit message body" [ref=e310] [cursor=pointer]: …
+                      - code [ref=e318]:
+                        - link "6499ab8" [ref=e319] [cursor=pointer]:
+                          - /url: /binods1313/MutationMechanic/pull/8/commits/6499ab8954e6807cad219fe110e6f30831ac987d
+                    - generic [ref=e327]:
+                      - link [ref=e330] [cursor=pointer]:
+                        - /url: /binods1313
+                        - img "@binods1313" [ref=e331]
+                      - generic [ref=e332]:
+                        - code [ref=e333]:
+                          - 'link "fix: harden SESSION_SECRET - fail closed in production" [ref=e334] [cursor=pointer]':
+                            - /url: /binods1313/MutationMechanic/pull/8/commits/ca19de8ff9aa41e81cce849d7a0c15b75b05072e
+                        - button "Commit message body" [ref=e336] [cursor=pointer]: …
+                      - code [ref=e344]:
+                        - link "ca19de8" [ref=e345] [cursor=pointer]:
+                          - /url: /binods1313/MutationMechanic/pull/8/commits/ca19de8ff9aa41e81cce849d7a0c15b75b05072e
+                    - generic [ref=e353]:
+                      - link [ref=e356] [cursor=pointer]:
+                        - /url: /binods1313
+                        - img "@binods1313" [ref=e357]
+                      - generic [ref=e358]:
+                        - code [ref=e359]:
+                          - 'link "fix: harden IP-based rate-limiting against XFF spoofing" [ref=e360] [cursor=pointer]':
+                            - /url: /binods1313/MutationMechanic/pull/8/commits/cb8897559db155ef958e80e2c18bec2d7661ef8d
+                        - button "Commit message body" [ref=e362] [cursor=pointer]: …
+                      - code [ref=e370]:
+                        - link "cb88975" [ref=e371] [cursor=pointer]:
+                          - /url: /binods1313/MutationMechanic/pull/8/commits/cb8897559db155ef958e80e2c18bec2d7661ef8d
+                    - generic [ref=e379]:
+                      - link [ref=e382] [cursor=pointer]:
+                        - /url: /binods1313
+                        - img "@binods1313" [ref=e383]
+                      - generic [ref=e384]:
+                        - code [ref=e385]:
+                          - 'link "fix: metering coverage audit - wire escaping AI endpoints, clean up d…" [ref=e386] [cursor=pointer]':
+                            - /url: /binods1313/MutationMechanic/pull/8/commits/1bdc091ffc8f3e3ec7cee5da6e031d83ea13822f
+                        - button "Commit message body" [ref=e388] [cursor=pointer]: …
+                      - code [ref=e396]:
+                        - link "1bdc091" [ref=e397] [cursor=pointer]:
+                          - /url: /binods1313/MutationMechanic/pull/8/commits/1bdc091ffc8f3e3ec7cee5da6e031d83ea13822f
+                    - generic [ref=e405]:
+                      - link [ref=e408] [cursor=pointer]:
+                        - /url: /binods1313
+                        - img "@binods1313" [ref=e409]
+                      - generic [ref=e410]:
+                        - code [ref=e411]:
+                          - 'link "feat: commit M1 migration rebuild - authoritative from-empty history …" [ref=e412] [cursor=pointer]':
+                            - /url: /binods1313/MutationMechanic/pull/8/commits/35c20f4a6b3931aa1762a78df668ab7309dde84d
+                        - button "Commit message body" [ref=e414] [cursor=pointer]: …
+                      - code [ref=e422]:
+                        - link "35c20f4" [ref=e423] [cursor=pointer]:
+                          - /url: /binods1313/MutationMechanic/pull/8/commits/35c20f4a6b3931aa1762a78df668ab7309dde84d
+                    - generic [ref=e431]:
+                      - link [ref=e434] [cursor=pointer]:
+                        - /url: /binods1313
+                        - img "@binods1313" [ref=e435]
+                      - generic [ref=e436]:
+                        - code [ref=e437]:
+                          - 'link "fix: M1 review - async error handling (DB failure->500), remaining co…" [ref=e438] [cursor=pointer]':
+                            - /url: /binods1313/MutationMechanic/pull/8/commits/c3ef735bde8525041be897638d4cd8c988c9ff85
+                        - button "Commit message body" [ref=e440] [cursor=pointer]: …
+                      - group [ref=e758]:
+                        - img "2 / 2 checks OK" [ref=e760] [cursor=pointer]
+                      - code [ref=e448]:
+                        - link "c3ef735" [ref=e449] [cursor=pointer]:
+                          - /url: /binods1313/MutationMechanic/pull/8/commits/c3ef735bde8525041be897638d4cd8c988c9ff85
+                - generic [ref=e451]:
+                  - link [ref=e453] [cursor=pointer]:
+                    - /url: /apps/vercel
+                    - img "@vercel" [ref=e454]
+                  - generic [ref=e456]:
+                    - generic [ref=e457]:
+                      - heading "vercel Bot commented Sep 5, 20269 minutes ago" [level=3] [ref=e458]:
+                        - generic [ref=e459]:
+                          - strong [ref=e460]:
+                            - link "vercel" [ref=e461] [cursor=pointer]:
+                              - /url: /apps/vercel
+                            - generic [ref=e462]: Bot
+                          - text: commented
+                          - link "Sep 5, 20269 minutes ago" [ref=e463] [cursor=pointer]:
+                            - /url: "#issuecomment-5555121533"
+                      - group [ref=e466]:
+                        - button [ref=e467] [cursor=pointer]:
+                          - img "Show options" [ref=e470]
+                    - generic [ref=e472]:
+                      - table [ref=e474]:
+                        - rowgroup [ref=e475]:
+                          - row [ref=e476]:
+                            - cell [ref=e477]:
+                              - paragraph [ref=e478]:
+                                - text: The latest updates on your projects. Learn more about
+                                - link "Vercel for GitHub" [ref=e479] [cursor=pointer]:
+                                  - /url: https://vercel.link/github-learn-more
+                                - text: .
+                              - table [ref=e481]:
+                                - rowgroup [ref=e482]:
+                                  - row [ref=e483]:
+                                    - columnheader "Project" [ref=e484]
+                                    - columnheader "Deployment" [ref=e485]
+                                    - columnheader "Actions" [ref=e486]
+                                    - columnheader "Updated" [ref=e487]
+                                - rowgroup [ref=e488]:
+                                  - row [ref=e489]:
+                                    - cell [ref=e490]:
+                                      - link [ref=e491] [cursor=pointer]:
+                                        - /url: https://vercel.com/binods-projects-6cd5a358/mutationmechanicai
+                                        - superscript [ref=e492]
+                                      - link "mutationmechanicai" [ref=e493] [cursor=pointer]:
+                                        - /url: https://vercel.com/binods-projects-6cd5a358/mutationmechanicai
+                                    - cell [ref=e494]:
+                                      - link [ref=e495] [cursor=pointer]:
+                                        - /url: https://camo.githubusercontent.com/2d058aa4937109084c3b00dc259081ef9f01257a8504a292a286041635575d96/68747470733a2f2f76657263656c2e636f6d2f7374617469632f7374617475732f72656164792e737667
+                                        - img "Ready" [ref=e496]
+                                      - link "Ready" [ref=e497] [cursor=pointer]:
+                                        - /url: https://vercel.com/binods-projects-6cd5a358/mutationmechanicai/BrneTh6DyDvpzNjAFziU8c6hGWdo
+                                    - cell [ref=e498]:
+                                      - link "Preview" [ref=e499] [cursor=pointer]:
+                                        - /url: https://mutationmechanicai-git-feat-m1-199a35-binods-projects-6cd5a358.vercel.app
+                                    - cell "Sep 5, 2026 10:10pm UTC9 minutes ago" [ref=e500]
+                      - group [ref=e505]:
+                        - generic "Add or remove reactions" [ref=e506] [cursor=pointer]
+                - generic [ref=e511]:
+                  - button "Show environments" [ref=e512] [cursor=pointer]
+                  - generic [ref=e515]:
+                    - heading "This branch was successfully deployed" [level=3] [ref=e519]
+                    - text: 1 active deployment
+            - generic [ref=e520]:
+              - heading "Merge info" [level=2] [ref=e762]
+              - generic [ref=e763]:
+                - img "Ready to merge" [ref=e765]
+                - generic [ref=e769]:
+                  - region "Checks" [ref=e770]:
+                    - generic [ref=e771]:
+                      - generic [ref=e781]:
+                        - heading "All checks have passed" [level=3] [ref=e782]
+                        - paragraph [ref=e783]: 2 successful checks
+                      - button "Expand checks" [ref=e784] [cursor=pointer]
+                  - region "Conflicts" [ref=e789]:
+                    - generic [ref=e799]:
+                      - heading "No conflicts with base branch" [level=3] [ref=e800]
+                      - paragraph [ref=e801]: Merging can be performed automatically.
+                  - generic [ref=e803]:
+                    - generic [ref=e804]:
+                      - button "Merge pull request" [ref=e806] [cursor=pointer]
+                      - button "Select merge method" [ref=e810] [cursor=pointer]
+                    - generic [ref=e813]:
+                      - text: You can also merge this with the command line.
+                      - button "View command line instructions." [ref=e814] [cursor=pointer]
+                - generic [ref=e815]:
+                  - generic [ref=e816]: Still in progress?
+                  - button "Convert to draft" [ref=e817] [cursor=pointer]
+            - generic [ref=e529]:
+              - link [ref=e531] [cursor=pointer]:
+                - /url: /binods1313
+                - img "@binods1313" [ref=e532]
+              - form [ref=e534]:
+                - group [ref=e535]:
+                  - heading "Add a comment" [level=4] [ref=e538]
+                  - generic [ref=e539]: Comment
+                  - generic [ref=e540]:
+                    - generic [ref=e541]:
+                      - tablist "Add a comment" [ref=e542]:
+                        - tab "Write" [selected] [ref=e543] [cursor=pointer]
+                        - tab "Preview" [ref=e544] [cursor=pointer]
+                      - toolbar [ref=e545]:
+                        - generic [ref=e546]:
+                          - button "Heading" [ref=e548] [cursor=pointer]
+                          - button "Bold" [ref=e550] [cursor=pointer]
+                          - button "Italic" [ref=e552] [cursor=pointer]
+                          - button "Quote" [ref=e554] [cursor=pointer]
+                          - button "Code" [ref=e556] [cursor=pointer]
+                          - button "Link" [ref=e558] [cursor=pointer]
+                          - separator [aria-hidden] [ref=e559]
+                          - button "Numbered list" [ref=e561] [cursor=pointer]
+                          - button "Unordered list" [ref=e563] [cursor=pointer]
+                          - button "Task list" [ref=e565] [cursor=pointer]
+                          - separator [aria-hidden] [ref=e566]
+                          - button "Attach files" [ref=e568] [cursor=pointer]
+                        - button "Menu" [ref=e571] [cursor=pointer]
+                    - tabpanel "Write" [ref=e572]:
+                      - generic [ref=e576]:
+                        - textbox "Comment" [ref=e577]:
+                          - /placeholder: " "
+                        - paragraph [aria-hidden]: Add your comment here...
+                      - generic [ref=e578]:
+                        - link "Markdown is supported" [ref=e580] [cursor=pointer]:
+                          - /url: https://docs.github.com/github/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax
+                        - button "Paste, drop, or click to add files" [ref=e583] [cursor=pointer]
+                - generic [ref=e588]:
+                  - button "Close pull request" [ref=e590] [cursor=pointer]
+                  - button "Comment" [disabled] [ref=e594]
+              - generic [ref=e598]:
+                - text: Remember, contributions to this repository should follow our
+                - link "GitHub Community Guidelines" [ref=e599] [cursor=pointer]:
+                  - /url: https://docs.github.com/articles/github-community-guidelines
+                - text: .
+              - generic [ref=e600]:
+                - strong [ref=e603]: ProTip!
+                - text: Add comments to specific lines under
+                - link "Files changed" [ref=e604] [cursor=pointer]:
+                  - /url: /binods1313/MutationMechanic/pull/8/files
+                - text: .
+        - generic [ref=e608]:
+          - form "Select reviewers" [ref=e610]:
+            - group [ref=e611]:
+              - button "Reviewers" [ref=e612] [cursor=pointer]
+            - generic [ref=e615]: No reviews
+            - generic [ref=e617]:
+              - generic [ref=e618]: Still in progress?
+              - group [ref=e619]:
+                - button "Convert to draft" [ref=e620] [cursor=pointer]
+          - form "Select assignees" [ref=e622]:
+            - group [ref=e623]:
+              - button "Assignees" [ref=e624] [cursor=pointer]
+            - generic [ref=e627]:
+              - text: No one—
+              - button "assign yourself" [ref=e628] [cursor=pointer]
+          - generic [ref=e629]:
+            - group [ref=e630]:
+              - button "Labels" [ref=e631] [cursor=pointer]
+            - generic [ref=e634]: None yet
+          - form "Select projects" [ref=e636]:
+            - group [ref=e637]:
+              - button "Projects" [ref=e638] [cursor=pointer]
+            - text: None yet
+          - form "Select milestones" [ref=e642]:
+            - group [ref=e643]:
+              - button "Milestone" [ref=e644] [cursor=pointer]
+            - text: No milestone
+          - form "Link issues" [ref=e652]:
+            - group [ref=e653]:
+              - button "Development" [ref=e654] [cursor=pointer]
+            - paragraph [ref=e657]: Successfully merging this pull request may close these issues.
+            - paragraph [ref=e821]: None yet
+          - generic [ref=e822]:
+            - button "Notifications Customize" [ref=e825] [cursor=pointer]:
+              - generic [ref=e826]:
+                - generic [ref=e827]: Notifications
+                - generic [ref=e828]: Customize
+            - button "Unsubscribe" [ref=e830] [cursor=pointer]
+            - paragraph [ref=e833]: You’re receiving notifications because you authored the thread.
+          - generic [ref=e667]:
+            - heading "1 participant" [level=3] [ref=e668]
+            - link [ref=e670] [cursor=pointer]:
+              - /url: /binods1313
+              - img "@binods1313" [ref=e671]
+          - group [ref=e673]:
+            - button [ref=e674] [cursor=pointer]:
+              - strong [ref=e677]: Lock conversation
+          - group [ref=e679]:
+            - button [ref=e680] [cursor=pointer]:
+              - strong [ref=e684]: Archive pull request
+  - contentinfo [ref=e685]:
+    - heading "Footer" [level=2] [ref=e686]
+    - generic [ref=e687]:
+      - generic [ref=e688]:
+        - link "GitHub Homepage" [ref=e689] [cursor=pointer]:
+          - /url: https://github.com
+        - generic [ref=e692]: © 2026 GitHub, Inc.
+      - navigation "Footer" [ref=e693]:
+        - heading "Footer navigation" [level=3] [ref=e694]
+        - list "Footer navigation" [ref=e695]:
+          - listitem [ref=e696]:
+            - link "Terms" [ref=e697] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/github-terms/github-terms-of-service
+          - listitem [ref=e698]:
+            - link "Privacy" [ref=e699] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/privacy-policies/github-privacy-statement
+          - listitem [ref=e700]:
+            - link "Security" [ref=e701] [cursor=pointer]:
+              - /url: https://github.com/security
+          - listitem [ref=e702]:
+            - link "Status" [ref=e703] [cursor=pointer]:
+              - /url: https://www.githubstatus.com/
+          - listitem [ref=e704]:
+            - link "Community" [ref=e705] [cursor=pointer]:
+              - /url: https://github.community/
+          - listitem [ref=e706]:
+            - link "Docs" [ref=e707] [cursor=pointer]:
+              - /url: https://docs.github.com/
+          - listitem [ref=e708]:
+            - link "Contact" [ref=e709] [cursor=pointer]:
+              - /url: https://support.github.com?tags=dotcom-footer
+          - listitem [ref=e710]:
+            - button "Manage cookies" [ref=e712] [cursor=pointer]
+          - listitem [ref=e713]:
+            - button "Do not share my personal information" [ref=e715] [cursor=pointer]

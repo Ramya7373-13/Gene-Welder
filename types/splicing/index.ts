@@ -70,6 +70,8 @@ export interface SplicingAnalysisResult {
     positionAcceptorLoss: number;
     positionDonorGain: number;
     positionDonorLoss: number;
+    maxDeltaScore?: number;
+    clinicalInterpretation?: string;
   };
   spliceAiSource?: 'API' | 'CACHE' | 'SIMULATION';
 

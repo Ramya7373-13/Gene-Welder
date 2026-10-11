@@ -148,6 +148,7 @@ interface ExtendedAnalysis extends VariantAnalysis {
     rmsd_to_wildtype?: number | null;
     domains_affected?: string[] | null;
     alphaFold_version?: string | null;
+    wildtype_structure_path?: string | null;
   };
 }
 
